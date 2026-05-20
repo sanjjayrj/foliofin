@@ -1,4 +1,6 @@
 #!/bin/bash
-# FolioFin launcher — runs the dev build until a packaged binary is available
-cd "$(dirname "$0")"
+# FolioFin — NVM-aware launcher
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+cd "$(dirname "$(realpath "$0")")"
 exec npm run tauri dev
