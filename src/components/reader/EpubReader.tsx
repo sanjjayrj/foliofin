@@ -66,16 +66,28 @@ export default function EpubReader({
   bookData, settings, savedCfi,
   onProgress, onTocReady, onPrevPage, onNextPage, onTocNavigate,
 }: EpubReaderProps) {
-  // bookData is always Uint8Array — epub.js cannot stream from a single-file URL
-  const containerRef = useRef<HTMLDivElement>(null);
-  const renditionRef = useRef<Rendition | null>(null);
-  const [error, setError] = useState('');
+  // bookData is always Uint8Array — epub.js can't reliably stream from a Jellyfin URL
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const renditionRef  = useRef<Rendition | null>(null);
+  const fadeTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [error,       setError]       = useState('');
+  // Page-turn fade: opacity drops to 0 on navigate, restores to 1 on 'relocated'
+  const [pageOpacity, setPageOpacity] = useState(1);
 
   const applyTheme = useCallback((rendition: Rendition) => {
     const style = buildTheme(settings);
     rendition.themes.register('foliofin', { body: style, p: { margin: '0 0 1.1em 0' } });
     rendition.themes.select('foliofin');
   }, [settings]);
+
+  /* navigate with a cross-fade: fade out → epub.js changes page → fade in */
+  const navigate = useCallback((action: () => void) => {
+    setPageOpacity(0);
+    action();
+    // Safety restore — fires if 'relocated' doesn't come back within 800ms
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    fadeTimer.current = setTimeout(() => setPageOpacity(1), 800);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -101,23 +113,28 @@ export default function EpubReader({
       .catch((err: Error) => setError(`Failed to open EPUB: ${err.message}`));
 
     rendition.on('relocated', (location: { start: { cfi: string; percentage: number } }) => {
+      // New page is ready — fade back in
+      setPageOpacity(1);
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
       if (location?.start) {
         onProgress(location.start.cfi, (location.start.percentage ?? 0) * 100);
       }
     });
 
-    onPrevPage(()  => renditionRef.current?.prev());
-    onNextPage(()  => renditionRef.current?.next());
-    onTocNavigate((href: string) => renditionRef.current?.display(href));
+    // Register prev/next with cross-fade wrapper
+    onPrevPage(()  => navigate(() => renditionRef.current?.prev()));
+    onNextPage(()  => navigate(() => renditionRef.current?.next()));
+    onTocNavigate((href: string) => navigate(() => renditionRef.current?.display(href)));
 
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') renditionRef.current?.next();
-      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   renditionRef.current?.prev();
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(() => renditionRef.current?.next());
+      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(() => renditionRef.current?.prev());
     };
     window.addEventListener('keydown', handleKey);
 
     return () => {
       window.removeEventListener('keydown', handleKey);
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
       rendition.destroy();
       book.destroy();
       renditionRef.current = null;
@@ -138,8 +155,15 @@ export default function EpubReader({
           <p className="text-sm" style={{ color: 'var(--color-red)' }}>{error}</p>
         </div>
       )}
-      {/* epub.js renders into this div — content appears as soon as epub.js is ready */}
-      <div ref={containerRef} className="w-full h-full" />
+      {/* epub.js renders into this div.
+          opacity transitions create the page-turn cross-fade:
+          0 → fade out as epub.js loads the new page
+          1 → fade in once 'relocated' fires (new content is ready) */}
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ opacity: pageOpacity, transition: 'opacity 0.22s ease' }}
+      />
     </div>
   );
 }

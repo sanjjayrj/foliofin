@@ -47,6 +47,11 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     setBookData(null);
     setLoadError('');
 
+    const fmt = detectFormat(currentBook);
+
+    // CBR: Rust reads from disk via localPath — no bytes needed in JS
+    if (fmt === 'cbr') return;
+
     // Prefer preloaded bytes (DetailScreen fetched these already — zero wait)
     if (preloadedBook?.id === currentBook.Id && preloadedBook.data instanceof Uint8Array) {
       setBookData(preloadedBook.data);
@@ -100,9 +105,14 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     }
   }, [config, currentBook.Id, setProgress]);
 
-  const handlePrevPage = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
-  const handleNextPage = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
-  const handleTocNav   = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
+  const handlePrevPage  = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
+  const handleNextPage  = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
+  const handleTocNav    = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
+  const handleTotalPages = useCallback((t: number) => setTotalPages(t), []);
+  const handleComicProgress = useCallback((page: number, pct: number) => {
+    setCurrentPage(page);
+    handleProgress(page, pct);
+  }, [handleProgress]);
 
   if (format === 'unknown' || format === 'mobi') {
     return (
@@ -189,8 +199,9 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           format={format}
           localPath={downloadEntry?.localPath}
           savedPage={savedProgress?.page}
-          onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
-          onTotalPages={t => setTotalPages(t)}
+          onBack={onBack}
+          onProgress={handleComicProgress}
+          onTotalPages={handleTotalPages}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
         />
