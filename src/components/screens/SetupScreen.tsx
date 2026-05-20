@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Server, User, Lock, BookOpen, Wifi, WifiOff } from 'lucide-react';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
 import { authenticate, getSystemInfo } from '../../services/jellyfin';
 import { useAppStore } from '../../store';
 import type { AppConfig } from '../../types/jellyfin';
@@ -14,24 +11,20 @@ export default function SetupScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [serverOk, setServerOk] = useState<boolean | null>(null);
-  const [serverName, setServerName] = useState('');
+  const [serverStatus, setServerStatus] = useState<null | { ok: boolean; name?: string }>(null);
 
-  // Debounced server ping
   useEffect(() => {
-    setServerOk(null);
-    setServerName('');
+    setServerStatus(null);
     const url = serverUrl.trim().replace(/\/$/, '');
     if (!url) return;
     const t = setTimeout(async () => {
       try {
         const info = await getSystemInfo(url);
-        setServerOk(true);
-        setServerName(info.ServerName ?? 'Jellyfin');
+        setServerStatus({ ok: true, name: info.ServerName });
       } catch {
-        setServerOk(false);
+        setServerStatus({ ok: false });
       }
-    }, 800);
+    }, 700);
     return () => clearTimeout(t);
   }, [serverUrl]);
 
@@ -63,100 +56,145 @@ export default function SetupScreen() {
   };
 
   return (
-    <div className="login-bg min-h-screen flex items-center justify-center p-6">
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="w-full max-w-md"
-      >
-        {/* Logo / branding */}
-        <div className="flex flex-col items-center mb-10">
-          <motion.div
-            initial={{ scale: 0.8 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
-            className="w-16 h-16 rounded-[20px] bg-gradient-to-br from-[#7c3aed] to-[#06b6d4] flex items-center justify-center mb-4 glow-primary"
+    <div
+      className="min-h-screen flex items-center justify-center p-8"
+      style={{ background: 'var(--color-bg)' }}
+    >
+      <div className="w-full max-w-sm flex flex-col gap-10">
+
+        {/* Logo */}
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-14 h-14 flex items-center justify-center"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px' }}
           >
-            <BookOpen size={30} className="text-white" />
-          </motion.div>
-          <h1 className="text-3xl font-bold gradient-text">FolioFin</h1>
-          <p className="text-sm text-[#9898b8] mt-1">Your Jellyfin reading companion</p>
+            <BookOpen size={26} style={{ color: 'var(--color-accent)' }} />
+          </div>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>FolioFin</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>Connect to your Jellyfin server</p>
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="glass rounded-[20px] p-8 space-y-5">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Server URL */}
-            <div className="space-y-1.5">
-              <Input
-                label="Server URL"
+        {/* Form card */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-5 p-7"
+          style={{
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '8px',
+          }}
+        >
+          {/* Server URL */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-muted)' }}>
+              Server URL
+            </label>
+            <div className="relative">
+              <Server size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-faint)' }} />
+              <input
                 type="url"
                 placeholder="http://192.168.1.x:8096"
                 value={serverUrl}
                 onChange={(e) => setServerUrl(e.target.value)}
-                icon={<Server size={15} />}
+                style={inputStyle}
+                className="pl-9"
               />
-              {/* Server status */}
-              {serverOk !== null && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex items-center gap-1.5 text-xs px-1 ${serverOk ? 'text-[#10b981]' : 'text-red-400'}`}
-                >
-                  {serverOk
-                    ? <><Wifi size={12} /> Connected to <strong>{serverName}</strong></>
-                    : <><WifiOff size={12} /> Server not reachable</>
-                  }
-                </motion.div>
-              )}
             </div>
-
-            <Input
-              label="Username"
-              type="text"
-              placeholder="jellyfin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              icon={<User size={15} />}
-            />
-
-            <Input
-              label="Password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              icon={<Lock size={15} />}
-            />
-
-            {error && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-[8px] px-3 py-2"
+            {serverStatus && (
+              <div
+                className="flex items-center gap-1.5 text-xs mt-0.5"
+                style={{ color: serverStatus.ok ? 'var(--color-green)' : 'var(--color-red)' }}
               >
-                {error}
-              </motion.p>
+                {serverStatus.ok
+                  ? <><Wifi size={11} /> Connected to <strong>{serverStatus.name}</strong></>
+                  : <><WifiOff size={11} /> Server not reachable</>
+                }
+              </div>
             )}
+          </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              loading={loading}
-              className="w-full mt-2 justify-center"
+          {/* Username */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-muted)' }}>
+              Username
+            </label>
+            <div className="relative">
+              <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-faint)' }} />
+              <input
+                type="text"
+                placeholder="your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                style={inputStyle}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-muted)' }}>
+              Password
+            </label>
+            <div className="relative">
+              <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-faint)' }} />
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                style={inputStyle}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <p
+              className="text-sm px-3 py-2"
+              style={{
+                color: 'var(--color-red)',
+                background: 'rgba(201,95,95,0.1)',
+                border: '1px solid rgba(201,95,95,0.2)',
+                borderRadius: '5px',
+              }}
             >
-              {loading ? 'Signing in…' : 'Sign In'}
-            </Button>
-          </form>
+              {error}
+            </p>
+          )}
 
-          <p className="text-center text-xs text-[#5a5a7a] pt-2">
-            Connect to your Jellyfin server to access your book library
-          </p>
-        </div>
-      </motion.div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 text-sm font-semibold mt-1"
+            style={{
+              background: loading ? 'var(--color-raised)' : 'var(--color-accent)',
+              color: loading ? 'var(--color-muted)' : '#111',
+              borderRadius: '5px',
+              border: 'none',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--color-card)',
+  border: '1px solid var(--color-border)',
+  borderRadius: '5px',
+  color: 'var(--color-text)',
+  padding: '9px 12px',
+  fontSize: '14px',
+  outline: 'none',
+};

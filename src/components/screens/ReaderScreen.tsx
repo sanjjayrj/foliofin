@@ -1,9 +1,10 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { useAppStore } from '../../store';
 import { getDownloadUrl, detectFormat, updateProgress } from '../../services/jellyfin';
 import { BookOpen } from 'lucide-react';
 import EpubReader from '../reader/EpubReader';
 import PdfReader from '../reader/PdfReader';
+import ComicReader from '../reader/ComicReader';
 import ReaderControls from '../reader/ReaderControls';
 
 interface TocItem {
@@ -20,20 +21,18 @@ interface ReaderScreenProps {
 export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const { config, currentBook, readerSettings, setReaderSettings, progress, setProgress } = useAppStore();
 
-  // Mutable refs for page-turn handlers (avoids re-mounting readers)
   const prevPageRef = useRef<() => void>(() => {});
   const nextPageRef = useRef<() => void>(() => {});
   const tocNavRef = useRef<(href: string) => void>(() => {});
-  const tocRef = useRef<TocItem[]>([]);
-  const progressRef = useRef({ percentage: 0, cfi: '', page: 1 });
+  const [toc, setToc] = useState<TocItem[]>([]);
+  const [currentPage, setCurrentPage] = useState<number | undefined>();
+  const [totalPages, setTotalPages] = useState<number | undefined>();
 
   if (!config || !currentBook) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#08080f]">
-        <div className="text-center">
-          <BookOpen size={48} className="text-[#3a3a52] mx-auto mb-3" />
-          <p className="text-[#9898b8]">No book selected</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: 'var(--color-bg)' }}>
+        <BookOpen size={40} style={{ color: 'var(--color-faint)' }} />
+        <p style={{ color: 'var(--color-muted)' }}>No book selected</p>
       </div>
     );
   }
@@ -45,11 +44,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
 
   const handleProgress = useCallback((cfiOrPage: string | number, percentage: number) => {
     const isString = typeof cfiOrPage === 'string';
-    progressRef.current = {
-      percentage,
-      cfi: isString ? (cfiOrPage as string) : '',
-      page: isString ? 1 : (cfiOrPage as number),
-    };
+    if (!isString) setCurrentPage(cfiOrPage as number);
     setProgress(currentBook.Id, {
       itemId: currentBook.Id,
       cfi: isString ? (cfiOrPage as string) : undefined,
@@ -57,42 +52,37 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
       percentage,
       updatedAt: Date.now(),
     });
-    // Sync to Jellyfin (fire-and-forget)
     if (percentage > 0) {
       updateProgress(config, currentBook.Id, Math.round(percentage * 10_000_000)).catch(() => {});
     }
   }, [config, currentBook.Id, setProgress]);
 
-  const handleTocReady = useCallback((toc: TocItem[]) => {
-    tocRef.current = toc;
-  }, []);
+  const handlePrevPage = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
+  const handleNextPage = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
+  const handleTocNav = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
 
-  const handlePrevPage = useCallback((handler: () => void) => {
-    prevPageRef.current = handler;
-  }, []);
-
-  const handleNextPage = useCallback((handler: () => void) => {
-    nextPageRef.current = handler;
-  }, []);
-
-  const handleTocNavigate = useCallback((handler: (href: string) => void) => {
-    tocNavRef.current = handler;
-  }, []);
-
-  // Unsupported format fallback
-  if (format !== 'epub' && format !== 'pdf') {
+  if (format === 'unknown' || format === 'mobi') {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-[#08080f] gap-4">
-        <BookOpen size={48} className="text-[#3a3a52]" />
+      <div className="flex flex-col items-center justify-center h-full gap-4" style={{ background: 'var(--color-bg)' }}>
+        <BookOpen size={40} style={{ color: 'var(--color-faint)' }} />
         <div className="text-center">
-          <p className="text-[#f0f0ff] font-medium">Format not supported</p>
-          <p className="text-[#9898b8] text-sm mt-1">
-            {format === 'unknown' ? 'Unknown format' : `${format.toUpperCase()} files are not yet supported`}
+          <p className="font-medium" style={{ color: 'var(--color-text)' }}>Format not supported</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
+            {format === 'mobi' ? 'MOBI files are not supported — try EPUB' : 'Could not determine file format'}
+          </p>
+          <p className="text-xs mt-2 font-mono" style={{ color: 'var(--color-faint)' }}>
+            Path: {currentBook.Path}
           </p>
         </div>
         <button
           onClick={onBack}
-          className="text-sm text-[#7c3aed] hover:text-[#a78bfa] transition-colors mt-2"
+          className="text-sm px-4 py-2 mt-2"
+          style={{
+            color: 'var(--color-accent)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '5px',
+            background: 'transparent',
+          }}
         >
           ← Back to library
         </button>
@@ -102,24 +92,36 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
 
   return (
     <div className="relative w-full h-full overflow-hidden">
-      {format === 'epub' ? (
+      {format === 'epub' && (
         <EpubReader
           bookUrl={bookUrl}
           settings={readerSettings}
           savedCfi={savedProgress?.cfi}
           onProgress={(cfi, pct) => handleProgress(cfi, pct)}
-          onTocReady={handleTocReady}
+          onTocReady={setToc}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
-          onTocNavigate={handleTocNavigate}
+          onTocNavigate={handleTocNav}
         />
-      ) : (
+      )}
+      {format === 'pdf' && (
         <PdfReader
           bookUrl={bookUrl}
           settings={readerSettings}
           savedPage={savedProgress?.page}
-          onProgress={(page, pct) => handleProgress(page, pct)}
-          onTotalPages={() => {}}
+          onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
+          onTotalPages={(t) => setTotalPages(t)}
+          onPrevPage={handlePrevPage}
+          onNextPage={handleNextPage}
+        />
+      )}
+      {(format === 'cbz' || format === 'cbr') && (
+        <ComicReader
+          bookUrl={bookUrl}
+          format={format}
+          savedPage={savedProgress?.page}
+          onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
+          onTotalPages={(t) => setTotalPages(t)}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
         />
@@ -128,9 +130,11 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
       <ReaderControls
         title={currentBook.Name}
         author={author}
+        currentPage={currentPage}
+        totalPages={totalPages}
         progress={savedProgress?.percentage ?? 0}
         settings={readerSettings}
-        toc={tocRef.current}
+        toc={toc}
         onBack={onBack}
         onPrevPage={() => prevPageRef.current()}
         onNextPage={() => nextPageRef.current()}

@@ -1,6 +1,5 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Library, Settings, LogOut, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
-import { clsx } from 'clsx';
 import { useAppStore } from '../../store';
 
 interface SidebarProps {
@@ -21,30 +20,44 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
   };
 
   const handleLogout = () => {
-    if (confirm('Sign out of FolioFin?')) {
-      clearConfig();
-    }
+    if (confirm('Sign out of FolioFin?')) clearConfig();
   };
 
   return (
     <motion.aside
-      animate={{ width: sidebarCollapsed ? 64 : 220 }}
-      transition={{ duration: 0.2, ease: 'easeInOut' }}
-      className="relative flex flex-col bg-[#0f0f1a] border-r border-[#1c1c2e] overflow-hidden flex-shrink-0 h-full"
+      animate={{ width: sidebarCollapsed ? 56 : 210 }}
+      transition={{ duration: 0.18, ease: 'easeInOut' }}
+      className="relative flex flex-col h-full flex-shrink-0 overflow-hidden"
+      style={{
+        background: 'var(--color-surface)',
+        borderRight: '1px solid var(--color-border-soft)',
+      }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-[#1c1c2e]">
-        <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-[#7c3aed] to-[#06b6d4] flex items-center justify-center flex-shrink-0">
-          <BookOpen size={16} className="text-white" />
+      <div
+        className="flex items-center gap-3 px-4 py-5"
+        style={{ borderBottom: '1px solid var(--color-border-soft)', minHeight: 68 }}
+      >
+        <div
+          className="flex items-center justify-center flex-shrink-0"
+          style={{
+            width: 28, height: 28,
+            background: 'var(--color-card)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '5px',
+          }}
+        >
+          <BookOpen size={14} style={{ color: 'var(--color-accent)' }} />
         </div>
         <AnimatePresence>
           {!sidebarCollapsed && (
             <motion.span
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.15 }}
-              className="font-bold text-base gradient-text whitespace-nowrap"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.1 }}
+              className="text-sm font-semibold whitespace-nowrap"
+              style={{ color: 'var(--color-text)' }}
             >
               FolioFin
             </motion.span>
@@ -52,16 +65,16 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         </AnimatePresence>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5">
-        {/* Libraries section */}
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 flex flex-col gap-0.5">
         <AnimatePresence>
           {!sidebarCollapsed && bookLibraries.length > 0 && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-[10px] font-semibold uppercase tracking-wider text-[#5a5a7a] px-2 pt-2 pb-1"
+              className="text-[10px] font-bold uppercase tracking-wider px-2 pt-2 pb-2"
+              style={{ color: 'var(--color-faint)' }}
             >
               Libraries
             </motion.p>
@@ -71,7 +84,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         {bookLibraries.map((lib) => (
           <NavItem
             key={lib.ItemId}
-            icon={<Library size={16} />}
+            icon={<Library size={15} />}
             label={lib.Name}
             active={activeLibraryId === lib.ItemId && activeScreen === 'library'}
             collapsed={sidebarCollapsed}
@@ -81,7 +94,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
 
         {bookLibraries.length === 0 && (
           <NavItem
-            icon={<Library size={16} />}
+            icon={<Library size={15} />}
             label="Library"
             active={activeScreen === 'library'}
             collapsed={sidebarCollapsed}
@@ -90,17 +103,17 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         )}
       </nav>
 
-      {/* Bottom actions */}
-      <div className="px-2 py-3 border-t border-[#1c1c2e] space-y-0.5">
+      {/* Bottom */}
+      <div className="px-2 py-3 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border-soft)' }}>
         <NavItem
-          icon={<Settings size={16} />}
+          icon={<Settings size={15} />}
           label="Settings"
           active={activeScreen === 'settings'}
           collapsed={sidebarCollapsed}
           onClick={() => onNavigate('settings')}
         />
         <NavItem
-          icon={<LogOut size={16} />}
+          icon={<LogOut size={15} />}
           label="Sign Out"
           active={false}
           collapsed={sidebarCollapsed}
@@ -109,17 +122,20 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         />
       </div>
 
-      {/* Server indicator */}
+      {/* User info */}
       <AnimatePresence>
         {!sidebarCollapsed && config && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-3 py-2 border-t border-[#1c1c2e]"
+            className="px-4 py-3"
+            style={{ borderTop: '1px solid var(--color-border-soft)' }}
           >
-            <p className="text-[10px] text-[#5a5a7a] truncate">{config.userName}</p>
-            <p className="text-[10px] text-[#3a3a52] truncate">{config.serverUrl.replace(/^https?:\/\//, '')}</p>
+            <p className="text-xs font-medium truncate" style={{ color: 'var(--color-muted)' }}>{config.userName}</p>
+            <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--color-faint)' }}>
+              {config.serverUrl.replace(/^https?:\/\//, '')}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -127,9 +143,18 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        className="absolute -right-3 top-16 z-10 w-6 h-6 rounded-full bg-[#1f1f32] border border-[#2a2a42] flex items-center justify-center text-[#9898b8] hover:text-[#f0f0ff] hover:border-[#7c3aed]/50 transition-all"
+        className="absolute -right-3 top-14 z-10 flex items-center justify-center"
+        style={{
+          width: 22, height: 22,
+          background: 'var(--color-card)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '50%',
+          color: 'var(--color-muted)',
+        }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-accent)')}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)')}
       >
-        {sidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        {sidebarCollapsed ? <ChevronRight size={11} /> : <ChevronLeft size={11} />}
       </button>
     </motion.aside>
   );
@@ -149,24 +174,38 @@ function NavItem({ icon, label, active, collapsed, onClick, danger }: NavItemPro
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={clsx(
-        'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[8px] text-sm font-medium transition-all duration-150',
-        active
-          ? 'sidebar-active text-[#a78bfa]'
+      className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
+      style={{
+        borderRadius: '4px',
+        borderLeft: active ? undefined : '2px solid transparent',
+        color: active
+          ? 'var(--color-accent-soft)'
           : danger
-          ? 'text-[#5a5a7a] hover:text-red-400 hover:bg-red-500/10'
-          : 'text-[#9898b8] hover:text-[#f0f0ff] hover:bg-[#1f1f32]',
-        collapsed && 'justify-center'
-      )}
+          ? 'var(--color-faint)'
+          : 'var(--color-muted)',
+        background: active ? 'var(--color-accent-bg)' : 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-card)';
+          (e.currentTarget as HTMLButtonElement).style.color = danger ? 'var(--color-red)' : 'var(--color-text)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+          (e.currentTarget as HTMLButtonElement).style.color = danger ? 'var(--color-faint)' : 'var(--color-muted)';
+        }
+      }}
     >
       <span className="flex-shrink-0">{icon}</span>
       <AnimatePresence>
         {!collapsed && (
           <motion.span
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.12 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
             className="truncate whitespace-nowrap"
           >
             {label}

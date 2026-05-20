@@ -78,11 +78,11 @@ export async function getBooks(
   const params = new URLSearchParams({
     IncludeItemTypes: 'Book',
     Recursive: 'true',
-    Fields: 'Overview,People,MediaSources,UserData,Genres,Tags,SeriesInfo',
+    Fields: 'Overview,People,MediaSources,UserData,Genres,Tags,SeriesInfo,Path,ImageTags',
     ImageTypeLimit: '1',
-    EnableImageTypes: 'Primary',
+    EnableImageTypes: 'Primary,Thumb',
     StartIndex: String(options.startIndex ?? 0),
-    Limit: String(options.limit ?? 100),
+    Limit: String(options.limit ?? 200),
     SortBy: options.sortBy ?? 'SortName',
     SortOrder: options.sortOrder ?? 'Ascending',
   });
@@ -109,13 +109,22 @@ export function getDownloadUrl(cfg: AppConfig, itemId: string): string {
 }
 
 export function detectFormat(item: JellyfinItem): BookFormat {
+  // MediaSources.Container is often empty for books — fall back to Path extension
   const container = item.MediaSources?.[0]?.Container?.toLowerCase();
-  if (!container) return 'unknown';
-  if (container === 'epub') return 'epub';
-  if (container === 'pdf') return 'pdf';
-  if (container === 'cbz') return 'cbz';
-  if (container === 'cbr') return 'cbr';
-  if (container === 'mobi' || container === 'azw3') return 'mobi';
+  if (container) {
+    if (container === 'epub') return 'epub';
+    if (container === 'pdf') return 'pdf';
+    if (container === 'cbz') return 'cbz';
+    if (container === 'cbr') return 'cbr';
+    if (container === 'mobi' || container === 'azw3') return 'mobi';
+  }
+  const path = item.Path ?? '';
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'epub') return 'epub';
+  if (ext === 'pdf') return 'pdf';
+  if (ext === 'cbz') return 'cbz';
+  if (ext === 'cbr') return 'cbr';
+  if (ext === 'mobi' || ext === 'azw3') return 'mobi';
   return 'unknown';
 }
 
