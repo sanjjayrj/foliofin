@@ -12,7 +12,7 @@ interface TocItem {
 }
 
 interface EpubReaderProps {
-  bookData: string | Uint8Array;
+  bookData: Uint8Array;
   settings: ReaderSettings;
   savedCfi?: string;
   onProgress:    (cfi: string, percentage: number) => void;
@@ -66,6 +66,7 @@ export default function EpubReader({
   bookData, settings, savedCfi,
   onProgress, onTocReady, onPrevPage, onNextPage, onTocNavigate,
 }: EpubReaderProps) {
+  // bookData is always Uint8Array — epub.js cannot stream from a single-file URL
   const containerRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const [error, setError] = useState('');
@@ -80,8 +81,7 @@ export default function EpubReader({
     if (!containerRef.current) return;
     setError('');
 
-    const input = bookData instanceof Uint8Array ? bookData.buffer : bookData;
-    const book: Book = Epub(input as string);
+    const book: Book = Epub(bookData.buffer as ArrayBuffer);
 
     const rendition = book.renderTo(containerRef.current, {
       width:  '100%',

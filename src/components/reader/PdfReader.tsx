@@ -9,7 +9,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 interface PdfReaderProps {
-  bookData: string | Uint8Array;
+  bookData: Uint8Array;
   settings: ReaderSettings;
   savedPage?: number;
   onProgress:   (page: number, percentage: number) => void;
@@ -71,8 +71,7 @@ export default function PdfReader({
 
     const load = async () => {
       try {
-        const src = bookData instanceof Uint8Array ? { data: bookData } : bookData;
-        const doc = await pdfjs.getDocument(src).promise;
+        const doc = await pdfjs.getDocument({ data: bookData }).promise;
         docRef.current = doc;
         setTotalPages(doc.numPages);
         onTotalPages(doc.numPages);

@@ -19,6 +19,13 @@ interface ReaderScreenProps {
   onBack: () => void;
 }
 
+async function fetchAsBytes(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
 export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const {
     config, currentBook, readerSettings, setReaderSettings,
@@ -31,27 +38,35 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const [toc,         setToc]         = useState<TocItem[]>([]);
   const [currentPage, setCurrentPage] = useState<number | undefined>();
   const [totalPages,  setTotalPages]  = useState<number | undefined>();
-  const [bookData,    setBookData]    = useState<string | Uint8Array | null>(null);
+  const [bookData,    setBookData]    = useState<Uint8Array | null>(null);
+  const [loadError,   setLoadError]   = useState('');
 
-  /* ── Resolve book data: use pre-read bytes when available ───────── */
+  /* ── Resolve book bytes ─────────────────────────────────────────── */
   useEffect(() => {
     if (!config || !currentBook) return;
     setBookData(null);
+    setLoadError('');
 
-    // Use bytes already pre-read by DetailScreen (no I/O wait)
-    if (preloadedBook?.id === currentBook.Id) {
+    // Prefer preloaded bytes (DetailScreen fetched these already — zero wait)
+    if (preloadedBook?.id === currentBook.Id && preloadedBook.data instanceof Uint8Array) {
       setBookData(preloadedBook.data);
       return;
     }
 
-    // Fallback: read from disk or stream from server
+    // Fallback: read from disk or fetch from server
     const entry = downloads[currentBook.Id];
     if (entry) {
       readBook(entry.localPath)
         .then(setBookData)
-        .catch(() => setBookData(getDownloadUrl(config, currentBook.Id)));
+        .catch(() => {
+          fetchAsBytes(getDownloadUrl(config, currentBook.Id))
+            .then(setBookData)
+            .catch(err => setLoadError(err instanceof Error ? err.message : 'Cannot load book'));
+        });
     } else {
-      setBookData(getDownloadUrl(config, currentBook.Id));
+      fetchAsBytes(getDownloadUrl(config, currentBook.Id))
+        .then(setBookData)
+        .catch(err => setLoadError(err instanceof Error ? err.message : 'Cannot load book'));
     }
   }, [currentBook?.Id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -64,10 +79,11 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     );
   }
 
-  const format       = detectFormat(currentBook);
-  const author       = currentBook.People?.find(p => p.Type === 'Author')?.Name;
+  const format        = detectFormat(currentBook);
+  const author        = currentBook.People?.find(p => p.Type === 'Author')?.Name;
   const savedProgress = progress[currentBook.Id];
   const downloadEntry = downloads[currentBook.Id];
+  const isOffline     = !!downloadEntry;
 
   const handleProgress = useCallback((cfiOrPage: string | number, percentage: number) => {
     const isString = typeof cfiOrPage === 'string';
@@ -117,21 +133,34 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     );
   }
 
-  /* Waiting for book data to resolve (brief, usually < 50ms from preload) */
-  if (!bookData) {
+  /* Load error */
+  if (loadError) {
     return (
-      <div className="w-full h-full" style={{ background: 'var(--color-bg)' }}>
-        {/* Thin amber bar — consistent with book's theme color */}
+      <div className="flex flex-col items-center justify-center h-full gap-4" style={{ background: 'var(--color-bg)' }}>
+        <BookOpen size={40} style={{ color: 'var(--color-faint)' }} />
+        <p className="text-sm text-center px-8" style={{ color: 'var(--color-red)' }}>{loadError}</p>
+        <button onClick={onBack} className="text-sm px-5 py-2.5" style={{ color: 'var(--color-accent)', border: '1px solid var(--color-border)', borderRadius: '5px', background: 'transparent' }}>
+          ← Back
+        </button>
+      </div>
+    );
+  }
+
+  /* CBR: no bytes needed — ComicReader uses localPath + Rust extraction */
+  const showCbr = (format === 'cbr');
+
+  /* Waiting for book bytes to resolve */
+  if (!bookData && !showCbr) {
+    return (
+      <div className="w-full h-full relative" style={{ background: 'var(--color-bg)' }}>
         <div className="loading-bar-thin" />
       </div>
     );
   }
 
-  const isOffline = bookData instanceof Uint8Array;
-
   return (
     <div className="relative w-full h-full overflow-hidden">
-      {format === 'epub' && (
+      {format === 'epub' && bookData && (
         <EpubReader
           bookData={bookData}
           settings={readerSettings}
@@ -143,7 +172,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           onTocNavigate={handleTocNav}
         />
       )}
-      {format === 'pdf' && (
+      {format === 'pdf' && bookData && (
         <PdfReader
           bookData={bookData}
           settings={readerSettings}
@@ -156,7 +185,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
       )}
       {(format === 'cbz' || format === 'cbr') && (
         <ComicReader
-          bookData={bookData}
+          bookData={bookData ?? new Uint8Array(0)}
           format={format}
           localPath={downloadEntry?.localPath}
           savedPage={savedProgress?.page}

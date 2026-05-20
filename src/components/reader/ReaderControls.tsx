@@ -43,12 +43,27 @@ export default function ReaderControls({
 
   return (
     <>
-      {/* Click-through layer */}
+      {/* Click zones:
+          - Controls visible: click anywhere → hide controls
+          - Controls hidden: left 33% → prev, right 33% → next, center 33% → show controls */}
       <div
         className="absolute inset-0 z-0"
-        onClick={() => {
-          setVisible((v) => !v);
-          if (!visible) { setShowSettings(false); setShowToc(false); }
+        onClick={(e) => {
+          if (visible) {
+            setVisible(false);
+            setShowSettings(false);
+            setShowToc(false);
+            return;
+          }
+          const x = e.clientX;
+          const w = window.innerWidth;
+          if (x < w / 3) {
+            onPrevPage();
+          } else if (x > (2 * w) / 3) {
+            onNextPage();
+          } else {
+            setVisible(true);
+          }
         }}
       />
 

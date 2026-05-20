@@ -35,8 +35,8 @@ const transition = {
 
 /* ── Props ──────────────────────────────────────────────────────── */
 interface ComicReaderProps {
-  /** Raw bytes (local cache) or streaming URL */
-  bookData: string | Uint8Array;
+  /** Raw bytes — always Uint8Array (CBR ignores this and uses localPath) */
+  bookData: Uint8Array;
   format: BookFormat;
   /** Relative AppData path — required for CBR Rust extraction */
   localPath?: string;
@@ -68,12 +68,7 @@ export default function ComicReader({
         let urls: string[] = [];
 
         if (format === 'cbz') {
-          const buf = bookData instanceof Uint8Array
-            ? bookData.buffer
-            : await fetch(bookData).then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.arrayBuffer();
-              });
+          const buf = bookData.buffer as ArrayBuffer;
 
           const zip = await JSZip.loadAsync(buf);
           const names = Object.keys(zip.files)
@@ -171,7 +166,6 @@ export default function ComicReader({
     <div
       className="absolute inset-0 flex items-center justify-center overflow-hidden reader-content"
       style={{ background: '#0a0a0a', perspective: '1200px' }}
-      onClick={next}
     >
       {/* Thin loading bar — non-blocking, fades out when done */}
       {loading && (

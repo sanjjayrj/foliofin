@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, BookOpen, User, Calendar, Tag,
   Play, Download, Star, RotateCcw, Check,
   FileText, Layers, FileType, Trash2, HardDrive,
-  BookMarked, Globe,
+  BookMarked, Globe, Loader,
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import {
@@ -31,6 +31,32 @@ const FORMAT_INFO: Record<BookFormat, { label: string; icon: React.ReactNode; de
 
 const SUPPORTED: BookFormat[] = ['epub', 'pdf', 'cbz', 'cbr'];
 
+async function fetchAsBytes(
+  url: string,
+  onProgress: (pct: number) => void,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const total = parseInt(res.headers.get('content-length') ?? '0', 10);
+  const rdr = res.body!.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  while (true) {
+    const { done, value } = await rdr.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      loaded += value.length;
+      onProgress(total > 0 ? (loaded / total) * 100 : 0);
+    }
+  }
+  const out = new Uint8Array(loaded);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
 export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps) {
   const config      = useAppStore(s => s.config)!;
   const progress    = useAppStore(s => s.progress[book.Id]);
@@ -48,7 +74,12 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
   const [dlError,     setDlError]     = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [webMeta,   setWebMeta]   = useState<WebBookMetadata | null>(null);
-  const [_preloading, setPreloading] = useState(false);
+
+  /* ── Preload state ────────────────────────────────────────────── */
+  const [preloadReady,    setPreloadReady]    = useState(false);
+  const [preloadProgress, setPreloadProgress] = useState(0);
+  const [preloadError,    setPreloadError]    = useState('');
+  const abortRef = useRef<AbortController | null>(null);
 
   const format    = detectFormat(detail);
   const fmt       = FORMAT_INFO[format];
@@ -80,24 +111,66 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
   /* ── Pre-read book bytes so reader opens instantly ─────────────── */
   useEffect(() => {
     if (!supported) return;
-    setPreloading(true);
+
+    // CBR is extracted via Rust (localPath) — no byte preload needed
+    if (format === 'cbr') {
+      setPreloadReady(true);
+      return;
+    }
+
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    setPreloadReady(false);
+    setPreloadProgress(0);
+    setPreloadError('');
+    setPreloadedBook(null);
 
     const entry = cached;
+
     if (entry) {
       readBook(entry.localPath)
         .then(data => {
+          if (abort.signal.aborted) return;
           setPreloadedBook({ id: book.Id, data });
-          setPreloading(false);
+          setPreloadReady(true);
+          setPreloadProgress(100);
         })
         .catch(() => {
-          setPreloadedBook({ id: book.Id, data: getDownloadUrl(config, book.Id) });
-          setPreloading(false);
+          if (abort.signal.aborted) return;
+          fetchAsBytes(getDownloadUrl(config, book.Id), setPreloadProgress, abort.signal)
+            .then(data => {
+              if (abort.signal.aborted) return;
+              setPreloadedBook({ id: book.Id, data });
+              setPreloadReady(true);
+            })
+            .catch(err => {
+              if (abort.signal.aborted) return;
+              setPreloadError(err instanceof Error ? err.message : 'Failed to load book');
+              setPreloadReady(true);
+            });
         });
     } else {
-      setPreloadedBook({ id: book.Id, data: getDownloadUrl(config, book.Id) });
-      setPreloading(false);
+      // Streaming: fetch full bytes (epub.js / pdfjs can't stream from a Jellyfin URL)
+      fetchAsBytes(getDownloadUrl(config, book.Id), setPreloadProgress, abort.signal)
+        .then(data => {
+          if (abort.signal.aborted) return;
+          setPreloadedBook({ id: book.Id, data });
+          setPreloadReady(true);
+        })
+        .catch(err => {
+          if (abort.signal.aborted) return;
+          setPreloadError(err instanceof Error ? err.message : 'Failed to load book');
+          setPreloadReady(true);
+        });
     }
-  }, [book.Id, cached?.localPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      abort.abort();
+      setPreloadedBook(null);
+    };
+  }, [book.Id, format, cached?.localPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ─────────────────────────────────────────────────── */
   const handleFavorite = async () => {
@@ -150,6 +223,14 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
   const webSubjects = webMeta?.subjects?.filter(
     s => !detail.Genres?.includes(s)
   ).slice(0, 5);
+
+  const isLoading = supported && format !== 'cbr' && !preloadReady;
+  const openLabel = isLoading
+    ? (preloadProgress > 0 ? `Loading ${Math.round(preloadProgress)}%` : 'Loading…')
+    : (inProgress ? 'Continue Reading' : isRead ? 'Read Again' : 'Open Reader');
+  const openIcon  = isLoading
+    ? <Loader size={18} className="animate-spin" />
+    : (inProgress ? <RotateCcw size={18} /> : <Play size={18} />);
 
   return (
     <div className="h-full flex flex-col" style={{ background: 'var(--color-bg)' }}>
@@ -238,6 +319,26 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
                 </span>
               </div>
             )}
+
+            {/* Preload progress bar (streaming books only) */}
+            {isLoading && (
+              <div className="flex flex-col gap-1.5">
+                <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
+                  <div
+                    className="h-full transition-all duration-300"
+                    style={{
+                      width: preloadProgress > 0 ? `${preloadProgress}%` : '30%',
+                      background: 'var(--color-accent)',
+                      borderRadius: '2px',
+                      animation: preloadProgress === 0 ? 'loading-bar-sweep 1.6s ease-out infinite' : undefined,
+                    }}
+                  />
+                </div>
+                <p className="text-[11px]" style={{ color: 'var(--color-faint)' }}>
+                  {preloadProgress > 0 ? `Buffering ${Math.round(preloadProgress)}%` : 'Buffering…'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* ── Info column ── */}
@@ -311,9 +412,10 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
                 <ActionButton
                   onClick={onRead}
                   primary
-                  icon={inProgress ? <RotateCcw size={18} /> : <Play size={18} />}
+                  icon={openIcon}
+                  disabled={isLoading}
                 >
-                  {inProgress ? 'Continue Reading' : isRead ? 'Read Again' : 'Open Reader'}
+                  {openLabel}
                 </ActionButton>
               ) : (
                 <div
@@ -327,14 +429,13 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
                 </div>
               )}
 
-              {supported && !cached && (
+              {supported && !cached && !isDownloading && (
                 <ActionButton
                   icon={<Download size={18} />}
                   onClick={handleDownload}
-                  disabled={isDownloading}
                   title="Save for offline reading"
                 >
-                  {isDownloading ? `Downloading… ${dlProgress}%` : 'Download'}
+                  Download
                 </ActionButton>
               )}
 
@@ -364,8 +465,8 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
               </div>
             )}
 
-            {dlError && (
-              <p className="text-sm" style={{ color: 'var(--color-red)' }}>{dlError}</p>
+            {(dlError || preloadError) && (
+              <p className="text-sm" style={{ color: 'var(--color-red)' }}>{dlError || preloadError}</p>
             )}
 
             {/* Unsupported format notice */}
