@@ -10,7 +10,7 @@
     "fs:allow-write-file",
     "fs:allow-mkdir",
     "fs:allow-exists",
-    "fs:allow-remove-file",
+    "fs:allow-remove",
     "fs:allow-read-dir",
     "fs:scope-appdata-recursive"
   ]
