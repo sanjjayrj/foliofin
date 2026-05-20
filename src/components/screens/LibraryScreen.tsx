@@ -82,7 +82,7 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
 
       {/* ── Top bar ──────────────────────────────────────── */}
       <div
-        className="flex items-center gap-4 px-8 py-5"
+        className="flex flex-wrap items-center gap-4 px-10 py-6"
         style={{ borderBottom: '1px solid var(--color-border-soft)' }}
       >
         {/* Search */}
@@ -197,7 +197,7 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
       </div>
 
       {/* ── Content ───────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-10 py-8">
 
         {loading && books.length === 0 && (
           <div className="flex items-center justify-center h-64">
@@ -227,7 +227,7 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
         )}
 
         {(bookItems.length > 0 || comicItems.length > 0) && (
-          <div className="flex flex-col gap-12">
+          <div className="flex flex-col gap-16">
             {/* Books section */}
             {bookItems.length > 0 && (
               <section>
@@ -293,8 +293,8 @@ function SectionHeader({ icon, label, count }: { icon: React.ReactNode; label: s
 function GridLayout({ items, onOpen }: { items: JellyfinItem[]; onOpen: (b: JellyfinItem) => void }) {
   return (
     <div
-      className="grid gap-5"
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))' }}
+      className="grid gap-6"
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(196px, 1fr))' }}
     >
       {items.map((book) => (
         <BookCard key={book.Id} book={book} onClick={() => onOpen(book)} />
@@ -308,7 +308,7 @@ function ListLayout({ items, onOpen }: { items: JellyfinItem[]; onOpen: (b: Jell
   const progress = useAppStore((s) => s.progress);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {items.map((book) => {
         const author = book.People?.find((p) => p.Type === 'Author')?.Name;
         const pct = progress[book.Id]?.percentage ?? 0;
@@ -317,7 +317,7 @@ function ListLayout({ items, onOpen }: { items: JellyfinItem[]; onOpen: (b: Jell
         return (
           <div
             key={book.Id}
-            className="flex items-center gap-5 px-5 py-4 cursor-pointer"
+            className="flex items-center gap-5 px-6 py-5 cursor-pointer"
             style={{
               background: 'var(--color-card)',
               border: '1px solid var(--color-border)',
@@ -338,7 +338,7 @@ function ListLayout({ items, onOpen }: { items: JellyfinItem[]; onOpen: (b: Jell
             <div
               className="flex-shrink-0 overflow-hidden"
               style={{
-                width: 44, height: 62,
+                width: 48, height: 68,
                 background: 'var(--color-surface)',
                 borderRadius: '4px',
                 border: '1px solid var(--color-border-soft)',

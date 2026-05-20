@@ -256,10 +256,10 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
 
       {/* ── Main content ── */}
       <div className="flex-1 overflow-y-auto">
-        <div className="flex gap-12 p-10 max-w-5xl">
+        <div className="flex flex-wrap gap-12 p-10 max-w-5xl">
 
           {/* ── Cover column ── */}
-          <div className="flex-shrink-0 flex flex-col gap-4" style={{ width: 230 }}>
+          <div className="flex-shrink-0 flex flex-col gap-4" style={{ width: 230, minWidth: 180 }}>
             <div
               className="overflow-hidden"
               style={{
@@ -342,7 +342,7 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
           </div>
 
           {/* ── Info column ── */}
-          <div className="flex-1 min-w-0 flex flex-col gap-7">
+          <div className="flex-1 min-w-0 flex flex-col gap-7" style={{ minWidth: 280 }}>
 
             {/* Title / author / year */}
             <div className="flex flex-col gap-3">

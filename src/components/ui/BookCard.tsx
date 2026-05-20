@@ -39,7 +39,11 @@ export default function BookCard({ book, onClick }: BookCardProps) {
       {/* Cover */}
       <div
         className="relative overflow-hidden flex-shrink-0"
-        style={{ aspectRatio: '2/3', borderRadius: '5px 5px 0 0' }}
+        style={{
+          aspectRatio: '2/3',
+          borderRadius: '5px 5px 0 0',
+          boxShadow: 'inset 0 -2px 8px rgba(0,0,0,0.18)',
+        }}
       >
         {coverUrl ? (
           <img
@@ -116,7 +120,7 @@ export default function BookCard({ book, onClick }: BookCardProps) {
       </div>
 
       {/* Info */}
-      <div className="flex flex-col gap-1.5 p-3">
+      <div className="flex flex-col gap-1.5 p-4">
         <p
           className="text-sm font-semibold leading-snug line-clamp-2"
           style={{ color: 'var(--color-text)' }}
