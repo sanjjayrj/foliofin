@@ -56,6 +56,10 @@ interface AppStore {
   setSidebarCollapsed: (v: boolean) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+
+  // Transient: pre-read book bytes so reader opens with no I/O wait
+  preloadedBook: { id: string; data: string | Uint8Array } | null;
+  setPreloadedBook: (pb: { id: string; data: string | Uint8Array } | null) => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -118,6 +122,9 @@ export const useAppStore = create<AppStore>()(
 
       searchQuery: '',
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+      preloadedBook: null,
+      setPreloadedBook: (preloadedBook) => set({ preloadedBook }),
     }),
     {
       name: 'foliofin-store',

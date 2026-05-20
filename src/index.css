@@ -120,6 +120,22 @@ button, a, input, select { transition: all 0.12s ease; }
 .epub-container iframe { border: none !important; }
 .reader-content { user-select: text; }
 
+/* ─── Thin loading bar (non-blocking indicator) ──────────── */
+@keyframes loading-bar-sweep {
+  0%   { transform: scaleX(0);    transform-origin: left; }
+  40%  { transform: scaleX(0.6);  transform-origin: left; }
+  70%  { transform: scaleX(0.82); transform-origin: left; }
+  100% { transform: scaleX(0.96); transform-origin: left; }
+}
+.loading-bar-thin {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--color-accent);
+  animation: loading-bar-sweep 1.6s ease-out forwards;
+  z-index: 50;
+}
+
 /* ─── Comic page ─────────────────────────────────────────── */
 .comic-page {
   max-width: 100%;

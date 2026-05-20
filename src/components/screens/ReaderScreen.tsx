@@ -7,7 +7,6 @@ import EpubReader from '../reader/EpubReader';
 import PdfReader from '../reader/PdfReader';
 import ComicReader from '../reader/ComicReader';
 import ReaderControls from '../reader/ReaderControls';
-import Spinner from '../ui/Spinner';
 
 interface TocItem {
   id: string;
@@ -21,25 +20,35 @@ interface ReaderScreenProps {
 }
 
 export default function ReaderScreen({ onBack }: ReaderScreenProps) {
-  const { config, currentBook, readerSettings, setReaderSettings, progress, setProgress, downloads } = useAppStore();
+  const {
+    config, currentBook, readerSettings, setReaderSettings,
+    progress, setProgress, downloads, preloadedBook,
+  } = useAppStore();
 
   const prevPageRef = useRef<() => void>(() => {});
   const nextPageRef = useRef<() => void>(() => {});
-  const tocNavRef = useRef<(href: string) => void>(() => {});
-  const [toc, setToc] = useState<TocItem[]>([]);
+  const tocNavRef   = useRef<(href: string) => void>(() => {});
+  const [toc,         setToc]         = useState<TocItem[]>([]);
   const [currentPage, setCurrentPage] = useState<number | undefined>();
-  const [totalPages, setTotalPages] = useState<number | undefined>();
-  const [bookData, setBookData] = useState<string | Uint8Array | null>(null);
+  const [totalPages,  setTotalPages]  = useState<number | undefined>();
+  const [bookData,    setBookData]    = useState<string | Uint8Array | null>(null);
 
-  // Load book data — from local cache if available, otherwise stream from server
+  /* ── Resolve book data: use pre-read bytes when available ───────── */
   useEffect(() => {
     if (!config || !currentBook) return;
     setBookData(null);
 
+    // Use bytes already pre-read by DetailScreen (no I/O wait)
+    if (preloadedBook?.id === currentBook.Id) {
+      setBookData(preloadedBook.data);
+      return;
+    }
+
+    // Fallback: read from disk or stream from server
     const entry = downloads[currentBook.Id];
     if (entry) {
       readBook(entry.localPath)
-        .then((data) => setBookData(data))
+        .then(setBookData)
         .catch(() => setBookData(getDownloadUrl(config, currentBook.Id)));
     } else {
       setBookData(getDownloadUrl(config, currentBook.Id));
@@ -55,19 +64,20 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     );
   }
 
-  const format = detectFormat(currentBook);
-  const author = currentBook.People?.find((p) => p.Type === 'Author')?.Name;
+  const format       = detectFormat(currentBook);
+  const author       = currentBook.People?.find(p => p.Type === 'Author')?.Name;
   const savedProgress = progress[currentBook.Id];
+  const downloadEntry = downloads[currentBook.Id];
 
   const handleProgress = useCallback((cfiOrPage: string | number, percentage: number) => {
     const isString = typeof cfiOrPage === 'string';
     if (!isString) setCurrentPage(cfiOrPage as number);
     setProgress(currentBook.Id, {
-      itemId: currentBook.Id,
-      cfi: isString ? (cfiOrPage as string) : undefined,
-      page: isString ? undefined : (cfiOrPage as number),
+      itemId:     currentBook.Id,
+      cfi:        isString ? (cfiOrPage as string) : undefined,
+      page:       isString ? undefined : (cfiOrPage as number),
       percentage,
-      updatedAt: Date.now(),
+      updatedAt:  Date.now(),
     });
     if (percentage > 0) {
       updateProgress(config, currentBook.Id, Math.round(percentage * 10_000_000)).catch(() => {});
@@ -76,7 +86,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
 
   const handlePrevPage = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
   const handleNextPage = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
-  const handleTocNav = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
+  const handleTocNav   = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
 
   if (format === 'unknown' || format === 'mobi') {
     return (
@@ -85,15 +95,15 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         <div className="text-center">
           <p className="font-medium" style={{ color: 'var(--color-text)' }}>Format not supported</p>
           <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
-            {format === 'mobi' ? 'MOBI files are not supported — try EPUB' : 'Could not determine file format'}
+            {format === 'mobi' ? 'MOBI is not supported — convert to EPUB' : 'Unknown file format'}
           </p>
           <p className="text-xs mt-2 font-mono" style={{ color: 'var(--color-faint)' }}>
-            Path: {currentBook.Path}
+            {currentBook.Path}
           </p>
         </div>
         <button
           onClick={onBack}
-          className="text-sm px-4 py-2 mt-2"
+          className="text-sm px-5 py-2.5 mt-2"
           style={{
             color: 'var(--color-accent)',
             border: '1px solid var(--color-border)',
@@ -107,17 +117,17 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     );
   }
 
-  // Still loading the file from disk
+  /* Waiting for book data to resolve (brief, usually < 50ms from preload) */
   if (!bookData) {
     return (
-      <div
-        className="flex items-center justify-center w-full h-full"
-        style={{ background: 'var(--color-bg)' }}
-      >
-        <Spinner size="lg" label="Loading book…" />
+      <div className="w-full h-full" style={{ background: 'var(--color-bg)' }}>
+        {/* Thin amber bar — consistent with book's theme color */}
+        <div className="loading-bar-thin" />
       </div>
     );
   }
+
+  const isOffline = bookData instanceof Uint8Array;
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -139,7 +149,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           settings={readerSettings}
           savedPage={savedProgress?.page}
           onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
-          onTotalPages={(t) => setTotalPages(t)}
+          onTotalPages={t => setTotalPages(t)}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
         />
@@ -148,9 +158,10 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         <ComicReader
           bookData={bookData}
           format={format}
+          localPath={downloadEntry?.localPath}
           savedPage={savedProgress?.page}
           onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
-          onTotalPages={(t) => setTotalPages(t)}
+          onTotalPages={t => setTotalPages(t)}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
         />
@@ -164,12 +175,12 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         progress={savedProgress?.percentage ?? 0}
         settings={readerSettings}
         toc={toc}
-        isOffline={bookData instanceof Uint8Array}
+        isOffline={isOffline}
         onBack={onBack}
         onPrevPage={() => prevPageRef.current()}
         onNextPage={() => nextPageRef.current()}
-        onSettingsChange={(s) => setReaderSettings(s)}
-        onTocNavigate={(href) => tocNavRef.current(href)}
+        onSettingsChange={s => setReaderSettings(s)}
+        onTocNavigate={href => tocNavRef.current(href)}
       />
     </div>
   );

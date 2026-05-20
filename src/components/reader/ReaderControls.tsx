@@ -135,12 +135,28 @@ export default function ReaderControls({
           >
             <button
               onClick={onPrevPage}
-              className="p-2 flex-shrink-0"
-              style={{ color: 'var(--color-muted)', borderRadius: '4px', border: 'none', background: 'transparent' }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)')}
+              className="flex items-center justify-center flex-shrink-0"
+              style={{
+                color: 'var(--color-muted)',
+                borderRadius: '7px',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-card)',
+                width: 44,
+                height: 44,
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent-dim)';
+                (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-raised)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)';
+                (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-card)';
+              }}
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={22} />
             </button>
 
             <div className="flex-1 flex flex-col gap-1.5">
@@ -162,12 +178,26 @@ export default function ReaderControls({
 
             <button
               onClick={onNextPage}
-              className="p-2 flex-shrink-0"
-              style={{ color: 'var(--color-muted)', borderRadius: '4px', border: 'none', background: 'transparent' }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)')}
+              className="flex items-center justify-center flex-shrink-0"
+              style={{
+                color: 'var(--color-accent-soft)',
+                borderRadius: '7px',
+                border: '1px solid var(--color-accent-dim)',
+                background: 'var(--color-accent-bg)',
+                width: 44,
+                height: 44,
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,146,42,0.22)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-accent-bg)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent-dim)';
+              }}
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={22} />
             </button>
           </motion.div>
         )}
