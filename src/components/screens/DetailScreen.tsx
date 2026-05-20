@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft, BookOpen, User, Calendar, Tag,
   Play, Download, Star, RotateCcw, Check,
-  FileText, Layers, FileType
+  FileText, Layers, FileType, Trash2, HardDrive,
 } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { getCoverUrl, detectFormat, getBookDetail, toggleFavorite } from '../../services/jellyfin';
+import {
+  getCoverUrl, detectFormat, getBookDetail,
+  toggleFavorite, getDownloadUrl,
+} from '../../services/jellyfin';
+import { downloadBook, deleteBook, formatBytes } from '../../services/storage';
 import type { JellyfinItem, BookFormat } from '../../types/jellyfin';
 
 interface DetailScreenProps {
@@ -28,16 +32,25 @@ const SUPPORTED: BookFormat[] = ['epub', 'pdf', 'cbz', 'cbr'];
 export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps) {
   const config = useAppStore((s) => s.config)!;
   const progress = useAppStore((s) => s.progress[book.Id]);
+  const downloads = useAppStore((s) => s.downloads);
+  const addDownload = useAppStore((s) => s.addDownload);
+  const removeDownload = useAppStore((s) => s.removeDownload);
+
   const [detail, setDetail] = useState<JellyfinItem>(book);
   const [imgError, setImgError] = useState(false);
   const [isFav, setIsFav] = useState(book.UserData?.IsFavorite ?? false);
   const [favLoading, setFavLoading] = useState(false);
 
+  const [dlProgress, setDlProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [dlError, setDlError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   // Load full detail (includes Overview and all People)
   useEffect(() => {
     getBookDetail(config, book.Id)
       .then((d) => setDetail(d))
-      .catch(() => {}); // fallback to what we already have
+      .catch(() => {});
   }, [book.Id, config]);
 
   const format = detectFormat(detail);
@@ -49,6 +62,7 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
   const pct = progress?.percentage ?? 0;
   const inProgress = pct > 0 && pct < 98;
   const isRead = detail.UserData?.Played ?? false;
+  const cached = downloads[book.Id];
 
   const handleFavorite = async () => {
     setFavLoading(true);
@@ -57,9 +71,51 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
     try {
       await toggleFavorite(config, detail.Id, next);
     } catch {
-      setIsFav(!next); // revert
+      setIsFav(!next);
     } finally {
       setFavLoading(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    setDlError('');
+    setDlProgress(0);
+
+    try {
+      const url = getDownloadUrl(config, book.Id);
+      const { localPath, fileSize } = await downloadBook(
+        url,
+        book.Id,
+        format,
+        (_, __, pctVal) => setDlProgress(Math.round(pctVal)),
+      );
+      addDownload({
+        itemId: book.Id,
+        localPath,
+        format,
+        fileSize,
+        downloadedAt: Date.now(),
+        bookName: book.Name,
+      });
+      setDlProgress(100);
+    } catch (err: unknown) {
+      setDlError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    try {
+      await deleteBook(book.Id, format);
+      removeDownload(book.Id);
+    } catch (err: unknown) {
+      setDlError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setConfirmDelete(false);
     }
   };
 
@@ -69,7 +125,7 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
       {/* Top bar */}
       <div
         className="flex items-center gap-3 px-6 py-4 flex-shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border-soft)' }}
+        style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <button
           onClick={onBack}
@@ -81,8 +137,8 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
             borderRadius: '5px',
             cursor: 'pointer',
           }}
-          onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)'}
-          onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)'}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-muted)')}
         >
           <ArrowLeft size={15} />
           Library
@@ -171,13 +227,10 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
 
             {/* Metadata chips */}
             <div className="flex flex-wrap gap-2">
-              {/* Format chip */}
-              <Chip
-                icon={fmt.icon}
-                label={fmt.label}
-                accent={supported}
-                title={fmt.desc}
-              />
+              <Chip icon={fmt.icon} label={fmt.label} accent={supported} title={fmt.desc} />
+              {cached && (
+                <Chip icon={<HardDrive size={11} />} label={`On device · ${formatBytes(cached.fileSize)}`} green />
+              )}
               {detail.Genres?.map((g) => (
                 <Chip key={g} icon={<Tag size={11} />} label={g} />
               ))}
@@ -221,16 +274,54 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
                 </div>
               )}
 
-              <ActionButton
-                icon={<Download size={16} />}
-                onClick={() => alert('Local download coming soon — will save to ~/Books/FolioFin/')}
-                title="Download for offline reading"
-              >
-                Download
-              </ActionButton>
+              {/* Download / Delete */}
+              {supported && !cached && (
+                <ActionButton
+                  icon={<Download size={16} />}
+                  onClick={handleDownload}
+                  disabled={isDownloading}
+                  title="Save to device for offline reading"
+                >
+                  {isDownloading ? `Downloading… ${dlProgress}%` : 'Download'}
+                </ActionButton>
+              )}
+              {supported && cached && (
+                <ActionButton
+                  icon={<Trash2 size={16} />}
+                  onClick={handleDelete}
+                  danger
+                  title="Remove from device"
+                >
+                  {confirmDelete ? 'Tap again to confirm' : 'Delete from Device'}
+                </ActionButton>
+              )}
             </div>
 
-            {/* Format info box */}
+            {/* Download progress bar */}
+            {isDownloading && (
+              <div className="flex flex-col gap-2">
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${dlProgress}%`,
+                      background: 'var(--color-accent)',
+                      borderRadius: '3px',
+                    }}
+                  />
+                </div>
+                <p className="text-xs" style={{ color: 'var(--color-muted)' }}>
+                  {dlProgress < 100 ? `Downloading… ${dlProgress}%` : 'Saving to device…'}
+                </p>
+              </div>
+            )}
+
+            {/* Download error */}
+            {dlError && (
+              <p className="text-sm" style={{ color: 'var(--color-red)' }}>{dlError}</p>
+            )}
+
+            {/* Unsupported format notice */}
             {!supported && (
               <div
                 className="p-4 text-sm"
@@ -263,10 +354,7 @@ export default function DetailScreen({ book, onBack, onRead }: DetailScreenProps
                 <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-faint)' }}>
                   File
                 </h3>
-                <p
-                  className="text-xs font-mono break-all"
-                  style={{ color: 'var(--color-faint)' }}
-                >
+                <p className="text-xs font-mono break-all" style={{ color: 'var(--color-faint)' }}>
                   {detail.Path}
                 </p>
               </div>
@@ -309,31 +397,37 @@ function Chip({
 }
 
 function ActionButton({
-  children, onClick, icon, primary, title,
+  children, onClick, icon, primary, danger, disabled, title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   icon?: React.ReactNode;
   primary?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
   title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
+      disabled={disabled}
       className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold"
       style={{
-        background: primary ? 'var(--color-accent)' : 'var(--color-card)',
-        border: primary ? 'none' : '1px solid var(--color-border)',
+        background: primary
+          ? 'var(--color-accent)'
+          : danger
+          ? 'rgba(201,95,95,0.1)'
+          : 'var(--color-card)',
+        border: primary
+          ? 'none'
+          : danger
+          ? '1px solid rgba(201,95,95,0.3)'
+          : '1px solid var(--color-border)',
         borderRadius: '5px',
-        color: primary ? '#111' : 'var(--color-text)',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!primary) (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent-dim)';
-      }}
-      onMouseLeave={(e) => {
-        if (!primary) (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)';
+        color: primary ? '#111' : danger ? 'var(--color-red)' : 'var(--color-text)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {icon}

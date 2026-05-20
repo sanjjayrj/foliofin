@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Library, Settings, LogOut, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { Library, Settings, LogOut, ChevronLeft, ChevronRight, BookOpen, HardDrive } from 'lucide-react';
 import { useAppStore } from '../../store';
 
 interface SidebarProps {
@@ -9,6 +9,7 @@ interface SidebarProps {
 
 export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
   const { config, libraries, activeLibraryId, setActiveLibraryId, sidebarCollapsed, setSidebarCollapsed, clearConfig } = useAppStore();
+  const downloadCount = useAppStore((s) => Object.keys(s.downloads).length);
 
   const bookLibraries = libraries.filter(
     (l) => !l.CollectionType || l.CollectionType === 'books'
@@ -136,6 +137,14 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--color-faint)' }}>
               {config.serverUrl.replace(/^https?:\/\//, '')}
             </p>
+            {downloadCount > 0 && (
+              <div className="flex items-center gap-1 mt-2">
+                <HardDrive size={10} style={{ color: 'var(--color-green)' }} />
+                <span className="text-[10px]" style={{ color: 'var(--color-green)' }}>
+                  {downloadCount} on device
+                </span>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

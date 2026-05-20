@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Star } from 'lucide-react';
+import { BookOpen, Star, HardDrive } from 'lucide-react';
 import type { JellyfinItem } from '../../types/jellyfin';
 import { getCoverUrl, detectFormat } from '../../services/jellyfin';
 import { useAppStore } from '../../store';
@@ -21,6 +21,7 @@ const FORMAT_LABEL: Record<string, string> = {
 export default function BookCard({ book, onClick }: BookCardProps) {
   const config = useAppStore((s) => s.config)!;
   const progress = useAppStore((s) => s.progress[book.Id]);
+  const cached = useAppStore((s) => s.downloads[book.Id]);
   const [imgError, setImgError] = useState(false);
 
   // Use ImageTags.Primary (HasPrimaryImage is unreliable on this server)
@@ -83,19 +84,35 @@ export default function BookCard({ book, onClick }: BookCardProps) {
           </span>
         )}
 
-        {/* Read badge — bottom right */}
-        {isRead && (
-          <span
-            className="absolute bottom-2 right-2 text-[10px] font-semibold px-2 py-0.5"
-            style={{
-              background: 'rgba(90,158,111,0.9)',
-              color: '#fff',
-              borderRadius: '3px',
-            }}
-          >
-            Read
-          </span>
-        )}
+        {/* Bottom-right badges */}
+        <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1">
+          {isRead && (
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5"
+              style={{
+                background: 'rgba(90,158,111,0.9)',
+                color: '#fff',
+                borderRadius: '3px',
+              }}
+            >
+              Read
+            </span>
+          )}
+          {cached && (
+            <span
+              className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.72)',
+                color: '#7ec8a0',
+                borderRadius: '3px',
+              }}
+              title="Saved on device"
+            >
+              <HardDrive size={9} />
+              Local
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Info */}

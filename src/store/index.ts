@@ -6,6 +6,8 @@ import type {
   JellyfinLibrary,
   ReaderSettings,
   BookProgress,
+  DownloadEntry,
+  ActiveDownload,
 } from '../types/jellyfin';
 
 interface AppStore {
@@ -39,6 +41,16 @@ interface AppStore {
   progress: Record<string, BookProgress>;
   setProgress: (itemId: string, progress: BookProgress) => void;
 
+  // Downloaded books — persisted so we know what's on disk
+  downloads: Record<string, DownloadEntry>;
+  addDownload: (entry: DownloadEntry) => void;
+  removeDownload: (itemId: string) => void;
+
+  // Active downloads — transient, cleared on restart
+  activeDownloads: Record<string, ActiveDownload>;
+  setActiveDownload: (itemId: string, dl: ActiveDownload) => void;
+  clearActiveDownload: (itemId: string) => void;
+
   // UI state
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
@@ -51,7 +63,10 @@ export const useAppStore = create<AppStore>()(
     (set) => ({
       config: null,
       setConfig: (config) => set({ config }),
-      clearConfig: () => set({ config: null, libraries: [], books: [], currentBook: null }),
+      clearConfig: () => set({
+        config: null, libraries: [], books: [],
+        currentBook: null, downloads: {}, activeDownloads: {},
+      }),
 
       libraries: [],
       setLibraries: (libraries) => set({ libraries }),
@@ -80,6 +95,24 @@ export const useAppStore = create<AppStore>()(
       setProgress: (itemId, progress) =>
         set((state) => ({ progress: { ...state.progress, [itemId]: progress } })),
 
+      downloads: {},
+      addDownload: (entry) =>
+        set((state) => ({ downloads: { ...state.downloads, [entry.itemId]: entry } })),
+      removeDownload: (itemId) =>
+        set((state) => {
+          const { [itemId]: _, ...rest } = state.downloads;
+          return { downloads: rest };
+        }),
+
+      activeDownloads: {},
+      setActiveDownload: (itemId, dl) =>
+        set((state) => ({ activeDownloads: { ...state.activeDownloads, [itemId]: dl } })),
+      clearActiveDownload: (itemId) =>
+        set((state) => {
+          const { [itemId]: _, ...rest } = state.activeDownloads;
+          return { activeDownloads: rest };
+        }),
+
       sidebarCollapsed: false,
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
 
@@ -93,6 +126,7 @@ export const useAppStore = create<AppStore>()(
         activeLibraryId: state.activeLibraryId,
         readerSettings: state.readerSettings,
         progress: state.progress,
+        downloads: state.downloads,
         sidebarCollapsed: state.sidebarCollapsed,
       }),
     }

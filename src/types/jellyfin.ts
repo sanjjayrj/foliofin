@@ -105,3 +105,22 @@ export interface AppConfig {
   userName: string;
   serverId: string;
 }
+
+export interface DownloadEntry {
+  itemId: string;
+  localPath: string;   // relative to AppData: 'books/{itemId}.epub'
+  format: BookFormat;
+  fileSize: number;    // bytes
+  downloadedAt: number;
+  bookName: string;
+}
+
+export interface ActiveDownload {
+  itemId: string;
+  bookName: string;
+  progress: number;    // 0–100
+  loaded: number;      // bytes so far
+  total: number;       // total bytes (0 if unknown)
+  status: 'downloading' | 'done' | 'error';
+  error?: string;
+}

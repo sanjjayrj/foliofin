@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, Sun, Moon, Coffee, Type,
-  ChevronLeft, ChevronRight, List, X
+  ChevronLeft, ChevronRight, List, X, HardDrive, Wifi
 } from 'lucide-react';
 import type { ReaderSettings, ReaderTheme, ReaderFont } from '../../types/jellyfin';
 
@@ -21,6 +21,7 @@ interface ReaderControlsProps {
   progress: number;
   settings: ReaderSettings;
   toc?: TocItem[];
+  isOffline?: boolean;
   onBack: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -33,7 +34,7 @@ const BORDER = '1px solid rgba(44, 41, 48, 0.8)';
 
 export default function ReaderControls({
   title, author, currentPage, totalPages, progress,
-  settings, toc = [], onBack, onPrevPage, onNextPage,
+  settings, toc = [], isOffline, onBack, onPrevPage, onNextPage,
   onSettingsChange, onTocNavigate,
 }: ReaderControlsProps) {
   const [visible, setVisible] = useState(true);
@@ -79,9 +80,25 @@ export default function ReaderControls({
               <span>Library</span>
             </button>
 
-            <div className="flex-1 min-w-0 px-2">
-              <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{title}</p>
-              {author && <p className="text-xs truncate" style={{ color: 'var(--color-muted)' }}>{author}</p>}
+            <div className="flex-1 min-w-0 px-2 flex items-center gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{title}</p>
+                {author && <p className="text-xs truncate" style={{ color: 'var(--color-muted)' }}>{author}</p>}
+              </div>
+              {isOffline !== undefined && (
+                <span
+                  className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 flex-shrink-0"
+                  style={{
+                    background: isOffline ? 'rgba(90,158,111,0.15)' : 'rgba(91,133,184,0.15)',
+                    border: `1px solid ${isOffline ? 'rgba(90,158,111,0.3)' : 'rgba(91,133,184,0.3)'}`,
+                    borderRadius: '3px',
+                    color: isOffline ? 'var(--color-green)' : 'var(--color-blue)',
+                  }}
+                >
+                  {isOffline ? <HardDrive size={9} /> : <Wifi size={9} />}
+                  {isOffline ? 'Offline' : 'Streaming'}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1">

@@ -13,7 +13,8 @@ interface TocItem {
 }
 
 interface EpubReaderProps {
-  bookUrl: string;
+  /** Either a URL string (streaming) or a Uint8Array (local cached file) */
+  bookData: string | Uint8Array;
   settings: ReaderSettings;
   savedCfi?: string;
   onProgress: (cfi: string, percentage: number) => void;
@@ -23,62 +24,46 @@ interface EpubReaderProps {
   onTocNavigate: (handler: (href: string) => void) => void;
 }
 
-const THEME_STYLES: Record<string, Record<string, string>> = {
-  dark: {
-    background: '#0a0a0f',
-    color: '#e8e8f0',
-    'font-size': '%%FSize%%px',
-    'line-height': '%%LH%%',
-    'font-family': '%%FONT%%',
-    'padding': '0 %%MARGINS%%px',
-  },
-  light: {
-    background: '#fafaf5',
-    color: '#1a1a1a',
-    'font-size': '%%FSize%%px',
-    'line-height': '%%LH%%',
-    'font-family': '%%FONT%%',
-    'padding': '0 %%MARGINS%%px',
-  },
-  sepia: {
-    background: '#f4e8c1',
-    color: '#3a2e1a',
-    'font-size': '%%FSize%%px',
-    'line-height': '%%LH%%',
-    'font-family': '%%FONT%%',
-    'padding': '0 %%MARGINS%%px',
-  },
-};
-
 const FONT_FAMILY: Record<string, string> = {
   serif: '"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif',
-  sans: '"Inter","Segoe UI",system-ui,sans-serif',
-  mono: '"JetBrains Mono","Cascadia Code",monospace',
+  sans:  '"Inter","Segoe UI",system-ui,sans-serif',
+  mono:  '"JetBrains Mono","Fira Code",monospace',
 };
 
-function buildStyle(settings: ReaderSettings): Record<string, string> {
-  const base = { ...THEME_STYLES[settings.theme] };
-  for (const [k, v] of Object.entries(base)) {
-    base[k] = v
-      .replace('%%FSize%%', String(settings.fontSize))
-      .replace('%%LH%%', String(settings.lineHeight))
-      .replace('%%FONT%%', FONT_FAMILY[settings.font])
-      .replace('%%MARGINS%%', String(settings.margins));
-  }
-  return base;
+const THEME_BG: Record<string, string> = {
+  dark:  '#0e0d0f',
+  light: '#f8f5ef',
+  sepia: '#f4e8c1',
+};
+
+const THEME_FG: Record<string, string> = {
+  dark:  '#e8e0d0',
+  light: '#1a1612',
+  sepia: '#3a2e1a',
+};
+
+function buildTheme(settings: ReaderSettings): Record<string, string> {
+  return {
+    background:   THEME_BG[settings.theme],
+    color:        THEME_FG[settings.theme],
+    'font-size':  `${settings.fontSize}px`,
+    'line-height': String(settings.lineHeight),
+    'font-family': FONT_FAMILY[settings.font],
+    'padding':     `0 ${settings.margins}px`,
+  };
 }
 
 function navToToc(nav: NavItem[]): TocItem[] {
   return nav.map((n) => ({
-    id: n.id ?? n.href,
-    href: n.href,
-    label: n.label.trim(),
+    id:       n.id ?? n.href,
+    href:     n.href,
+    label:    n.label.trim(),
     subitems: n.subitems?.length ? navToToc(n.subitems) : undefined,
   }));
 }
 
 export default function EpubReader({
-  bookUrl,
+  bookData,
   settings,
   savedCfi,
   onProgress,
@@ -87,14 +72,13 @@ export default function EpubReader({
   onNextPage,
   onTocNavigate,
 }: EpubReaderProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bookRef = useRef<Book | null>(null);
-  const renditionRef = useRef<Rendition | null>(null);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const renditionRef  = useRef<Rendition | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error,   setError]   = useState('');
 
   const applyTheme = useCallback((rendition: Rendition) => {
-    const style = buildStyle(settings);
+    const style = buildTheme(settings);
     rendition.themes.register('foliofin', { body: style, p: { margin: '0 0 1em 0' } });
     rendition.themes.select('foliofin');
   }, [settings]);
@@ -104,35 +88,33 @@ export default function EpubReader({
     setLoading(true);
     setError('');
 
-    const book = Epub(bookUrl);
-    bookRef.current = book;
+    // Accept either URL string or ArrayBuffer (from local file)
+    const input = bookData instanceof Uint8Array
+      ? bookData.buffer
+      : bookData;
+
+    const book: Book = Epub(input as string);
 
     const rendition = book.renderTo(containerRef.current, {
-      width: '100%',
+      width:  '100%',
       height: '100%',
-      flow: 'paginated',
+      flow:   'paginated',
       spread: 'none',
     });
     renditionRef.current = rendition;
-
     applyTheme(rendition);
 
-    book.ready.then(async () => {
-      // Load TOC
-      const nav = await book.loaded.navigation;
-      if (nav?.toc) onTocReady(navToToc(nav.toc));
-
-      // Display from saved position or start
-      if (savedCfi) {
-        await rendition.display(savedCfi);
-      } else {
-        await rendition.display();
-      }
-      setLoading(false);
-    }).catch((err: Error) => {
-      setError(`Failed to open book: ${err.message}`);
-      setLoading(false);
-    });
+    book.ready
+      .then(async () => {
+        const nav = await book.loaded.navigation;
+        if (nav?.toc) onTocReady(navToToc(nav.toc));
+        await rendition.display(savedCfi ?? undefined);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        setError(`Failed to open EPUB: ${err.message}`);
+        setLoading(false);
+      });
 
     rendition.on('relocated', (location: { start: { cfi: string; percentage: number } }) => {
       if (location?.start) {
@@ -140,15 +122,13 @@ export default function EpubReader({
       }
     });
 
-    // Wire up page turn handlers
     onPrevPage(() => renditionRef.current?.prev());
     onNextPage(() => renditionRef.current?.next());
     onTocNavigate((href: string) => renditionRef.current?.display(href));
 
-    // Keyboard navigation
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') renditionRef.current?.next();
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') renditionRef.current?.prev();
+      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   renditionRef.current?.prev();
     };
     window.addEventListener('keydown', handleKey);
 
@@ -156,34 +136,30 @@ export default function EpubReader({
       window.removeEventListener('keydown', handleKey);
       rendition.destroy();
       book.destroy();
-      bookRef.current = null;
       renditionRef.current = null;
     };
-  }, [bookUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-apply theme on settings change without reload
   useEffect(() => {
-    if (renditionRef.current) {
-      applyTheme(renditionRef.current);
-    }
+    if (renditionRef.current) applyTheme(renditionRef.current);
   }, [applyTheme]);
 
-  const bgColor = {
-    dark: '#0a0a0f',
-    light: '#fafaf5',
-    sepia: '#f4e8c1',
-  }[settings.theme];
-
   return (
-    <div className="relative w-full h-full epub-container reader-content" style={{ background: bgColor }}>
+    <div
+      className="relative w-full h-full epub-container reader-content"
+      style={{ background: THEME_BG[settings.theme] }}
+    >
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: bgColor }}>
+        <div
+          className="absolute inset-0 flex items-center justify-center z-10"
+          style={{ background: THEME_BG[settings.theme] }}
+        >
           <Spinner size="lg" label="Opening book…" />
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
-          <p className="text-red-400 text-sm">{error}</p>
+        <div className="absolute inset-0 flex items-center justify-center z-10 p-8 text-center">
+          <p className="text-sm" style={{ color: 'var(--color-red)' }}>{error}</p>
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />

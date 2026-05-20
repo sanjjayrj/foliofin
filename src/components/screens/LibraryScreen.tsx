@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Grid3x3, List, BookOpen, RefreshCw, X, BookMarked, Layers } from 'lucide-react';
+import { Search, Grid3x3, List, BookOpen, RefreshCw, X, BookMarked, Layers, HardDrive } from 'lucide-react';
 import BookCard from '../ui/BookCard';
 import Spinner from '../ui/Spinner';
 import { getBooks, detectFormat, getCoverUrl } from '../../services/jellyfin';
@@ -19,12 +19,26 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
     config, activeLibraryId, books,
     setBooks, setCurrentBook, searchQuery, setSearchQuery,
   } = useAppStore();
+  const downloads = useAppStore((s) => s.downloads);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortOption>('SortName');
+  const [offlineOnly, setOfflineOnly] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // `/` key focuses search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement !== searchRef.current) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const load = useCallback(async (search = '') => {
     if (!config) return;
@@ -58,9 +72,10 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
     onOpenBook();
   };
 
-  // Split books vs comics
-  const bookItems = books.filter((b) => !COMIC_FORMATS.has(detectFormat(b)));
-  const comicItems = books.filter((b) => COMIC_FORMATS.has(detectFormat(b)));
+  // Split books vs comics, optionally filtered to cached-only
+  const visible = offlineOnly ? books.filter((b) => !!downloads[b.Id]) : books;
+  const bookItems = visible.filter((b) => !COMIC_FORMATS.has(detectFormat(b)));
+  const comicItems = visible.filter((b) => COMIC_FORMATS.has(detectFormat(b)));
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-bg)' }}>
@@ -131,6 +146,25 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
           <option value="PremiereDate">Year</option>
         </select>
 
+        {/* On Device toggle */}
+        {Object.keys(downloads).length > 0 && (
+          <button
+            onClick={() => setOfflineOnly((v) => !v)}
+            title="Show only downloaded books"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold flex-shrink-0"
+            style={{
+              background: offlineOnly ? 'var(--color-accent-bg)' : 'var(--color-surface)',
+              border: `1px solid ${offlineOnly ? 'rgba(212,146,42,0.4)' : 'var(--color-border)'}`,
+              borderRadius: '5px',
+              color: offlineOnly ? 'var(--color-accent-soft)' : 'var(--color-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            <HardDrive size={13} />
+            On Device
+          </button>
+        )}
+
         {/* View toggle */}
         <div
           className="flex overflow-hidden"
@@ -186,10 +220,13 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
         )}
 
         {!loading && !error && books.length === 0 && (
-          <Empty search={searchQuery} />
+          <Empty search={searchQuery} offlineOnly={false} />
+        )}
+        {!loading && !error && books.length > 0 && bookItems.length === 0 && comicItems.length === 0 && (
+          <Empty search={searchQuery} offlineOnly={offlineOnly} />
         )}
 
-        {books.length > 0 && (
+        {(bookItems.length > 0 || comicItems.length > 0) && (
           <div className="flex flex-col gap-12">
             {/* Books section */}
             {bookItems.length > 0 && (
@@ -374,16 +411,24 @@ function ListLayout({ items, onOpen }: { items: JellyfinItem[]; onOpen: (b: Jell
   );
 }
 
-function Empty({ search }: { search: string }) {
+function Empty({ search, offlineOnly }: { search: string; offlineOnly: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <BookMarked size={36} style={{ color: 'var(--color-faint)' }} />
       <div className="text-center">
         <p className="font-medium" style={{ color: 'var(--color-muted)' }}>
-          {search ? `No results for "${search}"` : 'No books found'}
+          {offlineOnly
+            ? 'No books on device'
+            : search
+            ? `No results for "${search}"`
+            : 'No books found'}
         </p>
         <p className="text-sm mt-1" style={{ color: 'var(--color-faint)' }}>
-          {!search && 'Upload books to your Jellyfin server to get started'}
+          {offlineOnly
+            ? 'Open a book and tap Download to save it for offline reading'
+            : !search
+            ? 'Upload books to your Jellyfin server to get started'
+            : ''}
         </p>
       </div>
     </div>

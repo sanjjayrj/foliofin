@@ -11,7 +11,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 interface PdfReaderProps {
-  bookUrl: string;
+  bookData: string | Uint8Array;
   settings: ReaderSettings;
   savedPage?: number;
   onProgress: (page: number, percentage: number) => void;
@@ -29,7 +29,7 @@ const BG: Record<string, string> = {
 };
 
 export default function PdfReader({
-  bookUrl,
+  bookData,
   settings,
   savedPage,
   onProgress,
@@ -71,7 +71,8 @@ export default function PdfReader({
 
     const loadDoc = async () => {
       try {
-        const doc = await pdfjs.getDocument(bookUrl).promise;
+        const src = bookData instanceof Uint8Array ? { data: bookData } : bookData;
+        const doc = await pdfjs.getDocument(src).promise;
         docRef.current = doc;
         setTotalPages(doc.numPages);
         onTotalPages(doc.numPages);
@@ -87,7 +88,7 @@ export default function PdfReader({
 
     loadDoc();
     return () => { docRef.current?.destroy(); };
-  }, [bookUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (docRef.current) renderPage(currentPage);

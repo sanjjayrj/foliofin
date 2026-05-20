@@ -1,11 +1,13 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { getDownloadUrl, detectFormat, updateProgress } from '../../services/jellyfin';
+import { readBook } from '../../services/storage';
 import { BookOpen } from 'lucide-react';
 import EpubReader from '../reader/EpubReader';
 import PdfReader from '../reader/PdfReader';
 import ComicReader from '../reader/ComicReader';
 import ReaderControls from '../reader/ReaderControls';
+import Spinner from '../ui/Spinner';
 
 interface TocItem {
   id: string;
@@ -19,7 +21,7 @@ interface ReaderScreenProps {
 }
 
 export default function ReaderScreen({ onBack }: ReaderScreenProps) {
-  const { config, currentBook, readerSettings, setReaderSettings, progress, setProgress } = useAppStore();
+  const { config, currentBook, readerSettings, setReaderSettings, progress, setProgress, downloads } = useAppStore();
 
   const prevPageRef = useRef<() => void>(() => {});
   const nextPageRef = useRef<() => void>(() => {});
@@ -27,6 +29,22 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [currentPage, setCurrentPage] = useState<number | undefined>();
   const [totalPages, setTotalPages] = useState<number | undefined>();
+  const [bookData, setBookData] = useState<string | Uint8Array | null>(null);
+
+  // Load book data — from local cache if available, otherwise stream from server
+  useEffect(() => {
+    if (!config || !currentBook) return;
+    setBookData(null);
+
+    const entry = downloads[currentBook.Id];
+    if (entry) {
+      readBook(entry.localPath)
+        .then((data) => setBookData(data))
+        .catch(() => setBookData(getDownloadUrl(config, currentBook.Id)));
+    } else {
+      setBookData(getDownloadUrl(config, currentBook.Id));
+    }
+  }, [currentBook?.Id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!config || !currentBook) {
     return (
@@ -38,7 +56,6 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   }
 
   const format = detectFormat(currentBook);
-  const bookUrl = getDownloadUrl(config, currentBook.Id);
   const author = currentBook.People?.find((p) => p.Type === 'Author')?.Name;
   const savedProgress = progress[currentBook.Id];
 
@@ -84,8 +101,20 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
             background: 'transparent',
           }}
         >
-          ← Back to library
+          ← Back
         </button>
+      </div>
+    );
+  }
+
+  // Still loading the file from disk
+  if (!bookData) {
+    return (
+      <div
+        className="flex items-center justify-center w-full h-full"
+        style={{ background: 'var(--color-bg)' }}
+      >
+        <Spinner size="lg" label="Loading book…" />
       </div>
     );
   }
@@ -94,7 +123,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     <div className="relative w-full h-full overflow-hidden">
       {format === 'epub' && (
         <EpubReader
-          bookUrl={bookUrl}
+          bookData={bookData}
           settings={readerSettings}
           savedCfi={savedProgress?.cfi}
           onProgress={(cfi, pct) => handleProgress(cfi, pct)}
@@ -106,7 +135,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
       )}
       {format === 'pdf' && (
         <PdfReader
-          bookUrl={bookUrl}
+          bookData={bookData}
           settings={readerSettings}
           savedPage={savedProgress?.page}
           onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
@@ -117,7 +146,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
       )}
       {(format === 'cbz' || format === 'cbr') && (
         <ComicReader
-          bookUrl={bookUrl}
+          bookData={bookData}
           format={format}
           savedPage={savedProgress?.page}
           onProgress={(page, pct) => { setCurrentPage(page); handleProgress(page, pct); }}
@@ -135,6 +164,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         progress={savedProgress?.percentage ?? 0}
         settings={readerSettings}
         toc={toc}
+        isOffline={bookData instanceof Uint8Array}
         onBack={onBack}
         onPrevPage={() => prevPageRef.current()}
         onNextPage={() => nextPageRef.current()}

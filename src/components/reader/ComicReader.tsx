@@ -10,7 +10,7 @@ function isImage(name: string) {
 }
 
 interface ComicReaderProps {
-  bookUrl: string;
+  bookData: string | Uint8Array;
   format: BookFormat;
   savedPage?: number;
   onProgress: (page: number, percentage: number) => void;
@@ -20,7 +20,7 @@ interface ComicReaderProps {
 }
 
 export default function ComicReader({
-  bookUrl,
+  bookData,
   format,
   savedPage,
   onProgress,
@@ -39,9 +39,9 @@ export default function ComicReader({
 
     const load = async () => {
       try {
-        const res = await fetch(bookUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
+        const buf = bookData instanceof Uint8Array
+          ? bookData.buffer
+          : await fetch(bookData).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); });
 
         if (format === 'cbz') {
           const zip = await JSZip.loadAsync(buf);
@@ -98,7 +98,7 @@ export default function ComicReader({
         return [];
       });
     };
-  }, [bookUrl, format]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookData, format]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prev = useCallback(() => {
     setCurrentPage((p) => {
