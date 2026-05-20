@@ -115,6 +115,15 @@ export interface DownloadEntry {
   bookName: string;
 }
 
+export interface Annotation {
+  id: string;
+  bookId: string;
+  cfiRange: string;
+  color: string; // 'yellow' | 'green' | 'blue' | 'rose'
+  quote: string;
+  createdAt: number;
+}
+
 export interface ActiveDownload {
   itemId: string;
   bookName: string;

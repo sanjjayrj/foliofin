@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import Epub from 'epubjs';
 import type { Book, Rendition } from 'epubjs';
 import type { NavItem } from 'epubjs/types/navigation';
-import type { ReaderSettings } from '../../types/jellyfin';
+import type { ReaderSettings, Annotation } from '../../types/jellyfin';
 
 interface TocItem {
   id: string;
@@ -11,16 +11,35 @@ interface TocItem {
   subitems?: TocItem[];
 }
 
+export interface AnnotationControls {
+  add: (cfiRange: string, color: string) => void;
+  remove: (cfiRange: string) => void;
+}
+
+export type SearchFn = (query: string) => Promise<Array<{ cfi: string; excerpt: string }>>;
+
 interface EpubReaderProps {
   bookData: Uint8Array;
   settings: ReaderSettings;
   savedCfi?: string;
-  onProgress:    (cfi: string, percentage: number) => void;
-  onTocReady:    (toc: TocItem[]) => void;
-  onPrevPage:    (handler: () => void) => void;
-  onNextPage:    (handler: () => void) => void;
-  onTocNavigate: (handler: (href: string) => void) => void;
+  savedAnnotations?: Annotation[];
+  onProgress:          (cfi: string, percentage: number) => void;
+  onTocReady:          (toc: TocItem[]) => void;
+  onPrevPage:          (handler: () => void) => void;
+  onNextPage:          (handler: () => void) => void;
+  onTocNavigate:       (handler: (href: string) => void) => void;
+  onTextSelected?:     (cfiRange: string, quote: string) => void;
+  onAnnotationControls?: (controls: AnnotationControls) => void;
+  onSearchReady?:      (fn: SearchFn) => void;
 }
+
+// Shared highlight fill colors (also used by ReaderControls swatches)
+export const HIGHLIGHT_COLORS: Record<string, { fill: string; hex: string }> = {
+  yellow: { fill: 'rgba(255,215,0,0.42)',   hex: '#FFD700' },
+  green:  { fill: 'rgba(80,200,120,0.42)',   hex: '#50C878' },
+  blue:   { fill: 'rgba(100,160,255,0.42)',  hex: '#64A0FF' },
+  rose:   { fill: 'rgba(255,100,130,0.42)',  hex: '#FF6482' },
+};
 
 const FONT_FAMILY: Record<string, string> = {
   serif: '"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif',
@@ -40,14 +59,13 @@ const THEME_FG: Record<string, string> = {
   sepia: '#3a2e1a',
 };
 
-// Slightly lifted-page color for the peel overlay surface
 const PEEL_SURFACE: Record<string, string> = {
   dark:  '#1c1a22',
   light: '#ede8e2',
   sepia: '#e8d5a0',
 };
 
-const PEEL_DURATION = 680; // ms
+const PEEL_DURATION = 560; // ms
 
 function buildTheme(s: ReaderSettings): Record<string, string> {
   return {
@@ -71,53 +89,27 @@ function navToToc(nav: NavItem[]): TocItem[] {
   }));
 }
 
-// Returns clip-path polygon that starts at full-page coverage (t=0) and
-// peels down to nothing (t=1) using a diagonal sweep from a corner.
-//
-// dir >= 0 (forward): peel from bottom-right corner toward top-left
-//   Phase 1 (t 0→0.5): diagonal sweeps from BR; right-edge Y and
-//   bottom-edge X both descend from 100% to 0%.
-//   Phase 2 (t 0.5→1): remaining top-left triangle shrinks to a point.
-//
-// dir < 0 (backward): mirror — peel from bottom-left corner toward top-right.
+// Horizontal page-peel: the overlay starts at full coverage and clips
+// away horizontally — forward peels from right edge to left,
+// backward peels from left edge to right.
+// clip-path inset(top right bottom left)
 function peelClipPath(t: number, dir: number): string {
-  const t2 = Math.min(1, Math.max(0, t));
-  if (dir >= 0) {
-    if (t2 <= 0.5) {
-      const p  = t2 * 2;
-      const rY = ((1 - p) * 100).toFixed(2);
-      const bX = ((1 - p) * 100).toFixed(2);
-      return `polygon(0% 0%, 100% 0%, 100% ${rY}%, ${bX}% 100%, 0% 100%)`;
-    } else {
-      const p  = (t2 - 0.5) * 2;
-      const tX = ((1 - p) * 100).toFixed(2);
-      const lY = ((1 - p) * 100).toFixed(2);
-      return `polygon(0% 0%, ${tX}% 0%, 0% ${lY}%, 0% 0%, 0% 0%)`;
-    }
-  } else {
-    if (t2 <= 0.5) {
-      const p  = t2 * 2;
-      const lY = ((1 - p) * 100).toFixed(2);
-      const bX = (p * 100).toFixed(2);
-      return `polygon(0% 0%, 100% 0%, 100% 100%, ${bX}% 100%, 0% ${lY}%)`;
-    } else {
-      const p  = (t2 - 0.5) * 2;
-      const tX = (p * 100).toFixed(2);
-      const rY = ((1 - p) * 100).toFixed(2);
-      return `polygon(${tX}% 0%, 100% 0%, 100% ${rY}%, ${tX}% 0%, ${tX}% 0%)`;
-    }
-  }
+  const pct = (t * 100).toFixed(2);
+  return dir >= 0
+    ? `inset(0 0 0 ${pct}%)`   // forward: overlay left edge retreats rightward
+    : `inset(0 ${pct}% 0 0)`;  // backward: overlay right edge retreats leftward
 }
 
 export default function EpubReader({
-  bookData, settings, savedCfi,
+  bookData, settings, savedCfi, savedAnnotations,
   onProgress, onTocReady, onPrevPage, onNextPage, onTocNavigate,
+  onTextSelected, onAnnotationControls, onSearchReady,
 }: EpubReaderProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const peelRef       = useRef<HTMLDivElement>(null);
   const renditionRef  = useRef<Rendition | null>(null);
+  const bookRef       = useRef<Book | null>(null);
   const animRef       = useRef<number | null>(null);
-  // Keep latest settings accessible in RAF callbacks without re-running effects
   const settingsRef   = useRef(settings);
   settingsRef.current = settings;
 
@@ -133,12 +125,9 @@ export default function EpubReader({
     if (!el) return;
     el.style.display  = 'none';
     el.style.clipPath = '';
+    el.style.filter   = '';
   };
 
-  // Trigger a page-peel animation:
-  //  1. Call action() immediately (epub.js starts rendering new page behind overlay).
-  //  2. Show overlay covering the full page (hides the not-yet-rendered new content).
-  //  3. RAF loop clips the overlay with peelClipPath(t, dir), revealing new page below.
   const navigate = useCallback((action: () => void, dir: number) => {
     cancelAnim();
     action();
@@ -149,6 +138,10 @@ export default function EpubReader({
     peel.style.background = PEEL_SURFACE[settingsRef.current.theme];
     peel.style.display    = 'block';
     peel.style.clipPath   = peelClipPath(0, dir);
+    // Shadow on the leading edge of the peel to suggest depth
+    peel.style.filter = dir >= 0
+      ? 'drop-shadow(6px 0 18px rgba(0,0,0,0.45))'
+      : 'drop-shadow(-6px 0 18px rgba(0,0,0,0.45))';
 
     const start = performance.now();
     const tick = (now: number) => {
@@ -162,7 +155,7 @@ export default function EpubReader({
       }
     };
     animRef.current = requestAnimationFrame(tick);
-  }, []); // stable — all mutable state via refs
+  }, []);
 
   const applyTheme = useCallback((rendition: Rendition) => {
     const style = buildTheme(settingsRef.current);
@@ -170,10 +163,22 @@ export default function EpubReader({
     rendition.themes.select('foliofin');
   }, []);
 
+  const applyAnnotations = useCallback((rendition: Rendition, anns: Annotation[]) => {
+    for (const ann of anns) {
+      const color = HIGHLIGHT_COLORS[ann.color] ?? HIGHLIGHT_COLORS.yellow;
+      rendition.annotations.add(
+        'highlight', ann.cfiRange, {}, () => {},
+        `hl-${ann.color}`,
+        { fill: color.fill, 'fill-opacity': '1' },
+      );
+    }
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
     const book: Book = Epub(bookData.buffer as ArrayBuffer);
+    bookRef.current = book;
 
     const rendition = book.renderTo(containerRef.current, {
       width:  '100%',
@@ -189,6 +194,19 @@ export default function EpubReader({
         const nav = await book.loaded.navigation;
         if (nav?.toc) onTocReady(navToToc(nav.toc));
         await rendition.display(savedCfi ?? undefined);
+
+        // Apply saved highlights after first render
+        if (savedAnnotations?.length) {
+          applyAnnotations(rendition, savedAnnotations);
+        }
+
+        // Expose search function to parent
+        onSearchReady?.(async (query: string) => {
+          const results = await (book as Book & {
+            search: (q: string) => Promise<Array<{ cfi: string; excerpt: string }>>;
+          }).search(query);
+          return results ?? [];
+        });
       })
       .catch((err: Error) => {
         console.error('EpubReader: failed to open', err);
@@ -198,6 +216,29 @@ export default function EpubReader({
       if (location?.start) {
         onProgress(location.start.cfi, (location.start.percentage ?? 0) * 100);
       }
+    });
+
+    // Text selection → show highlight toolbar
+    rendition.on('selected', (cfiRange: string, contents: { window: Window }) => {
+      if (!cfiRange.includes(',')) return; // not a range
+      const quote = contents.window.getSelection()?.toString().trim() ?? '';
+      if (quote.length === 0) return;
+      onTextSelected?.(cfiRange, quote);
+    });
+
+    // Expose annotation add/remove methods to parent
+    onAnnotationControls?.({
+      add: (cfiRange: string, color: string) => {
+        const c = HIGHLIGHT_COLORS[color] ?? HIGHLIGHT_COLORS.yellow;
+        rendition.annotations.add(
+          'highlight', cfiRange, {}, () => {},
+          `hl-${color}`,
+          { fill: c.fill, 'fill-opacity': '1' },
+        );
+      },
+      remove: (cfiRange: string) => {
+        rendition.annotations.remove('highlight', cfiRange);
+      },
     });
 
     onPrevPage(()  => navigate(() => renditionRef.current?.prev(), -1));
@@ -216,10 +257,10 @@ export default function EpubReader({
       rendition.destroy();
       book.destroy();
       renditionRef.current = null;
+      bookRef.current = null;
     };
   }, [bookData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-apply theme when settings change without remounting the book
   useEffect(() => {
     if (renditionRef.current) applyTheme(renditionRef.current);
     if (peelRef.current && peelRef.current.style.display !== 'none') {
@@ -233,8 +274,7 @@ export default function EpubReader({
       style={{ background: THEME_BG[settings.theme] }}
     >
       <div ref={containerRef} className="w-full h-full" />
-      {/* Peel overlay: hidden at rest, shown during page-turn animation.
-          clip-path is driven by RAF — willChange hints the GPU to composite it. */}
+      {/* Peel overlay: starts hidden, covers page on navigation, clips away horizontally */}
       <div
         ref={peelRef}
         className="absolute inset-0 pointer-events-none"
@@ -243,7 +283,6 @@ export default function EpubReader({
           willChange: 'clip-path',
           zIndex:     5,
           background: PEEL_SURFACE[settings.theme],
-          boxShadow:  'inset -6px -6px 24px rgba(0,0,0,0.22)',
         }}
       />
     </div>

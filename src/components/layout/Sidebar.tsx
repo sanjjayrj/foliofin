@@ -16,8 +16,8 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
     sidebarCollapsed, setSidebarCollapsed, clearConfig,
   } = useAppStore();
 
-  const downloadCount  = useAppStore(s => Object.keys(s.downloads).length);
-  const totalBytes     = useAppStore(s =>
+  const downloadCount   = useAppStore(s => Object.keys(s.downloads).length);
+  const totalBytes      = useAppStore(s =>
     Object.values(s.downloads).reduce((sum, d) => sum + d.fileSize, 0)
   );
   const inProgressCount = useAppStore(s =>
@@ -49,7 +49,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         borderRight: '1px solid var(--color-border-soft)',
       }}
     >
-      {/* ── Logo / Brand ──────────────────────────────────── */}
+      {/* ── Logo / Brand ── */}
       <div
         className="flex items-center gap-3.5 px-5 py-5 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--color-border-soft)', minHeight: 76 }}
@@ -84,8 +84,8 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         </AnimatePresence>
       </div>
 
-      {/* ── Main nav ──────────────────────────────────────── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 flex flex-col gap-5">
+      {/* ── Main nav ── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 flex flex-col gap-5">
 
         {/* Libraries section */}
         <div className="flex flex-col gap-0.5">
@@ -95,7 +95,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-[10px] font-bold uppercase tracking-widest px-3 pb-2.5"
+                className="text-[10px] font-bold uppercase tracking-widest px-5 pb-2.5"
                 style={{ color: 'var(--color-faint)' }}
               >
                 Libraries
@@ -134,7 +134,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-[10px] font-bold uppercase tracking-widest px-3 pb-2.5"
+                className="text-[10px] font-bold uppercase tracking-widest px-5 pb-2.5"
                 style={{ color: 'var(--color-faint)' }}
               >
                 Collection
@@ -142,7 +142,6 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             )}
           </AnimatePresence>
 
-          {/* In Progress */}
           {inProgressCount > 0 && (
             <NavItem
               icon={<Clock size={16} />}
@@ -154,21 +153,20 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             />
           )}
 
-          {/* Downloads */}
           <NavItem
             icon={<HardDrive size={16} />}
             label="Downloads"
             badge={downloadCount > 0 ? downloadCount : undefined}
-            active={activeScreen === 'settings'}
+            active={activeScreen === 'downloads'}
             collapsed={sidebarCollapsed}
-            onClick={() => onNavigate('settings')}
+            onClick={() => onNavigate('downloads')}
           />
         </div>
       </nav>
 
-      {/* ── Bottom nav ────────────────────────────────────── */}
+      {/* ── Bottom nav ── */}
       <div
-        className="px-2 py-4 flex flex-col gap-0.5 flex-shrink-0"
+        className="py-4 flex flex-col gap-0.5 flex-shrink-0"
         style={{ borderTop: '1px solid var(--color-border-soft)' }}
       >
         <NavItem
@@ -188,7 +186,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         />
       </div>
 
-      {/* ── User info ─────────────────────────────────────── */}
+      {/* ── User info (expanded) ── */}
       <AnimatePresence>
         {!sidebarCollapsed && config && (
           <motion.div
@@ -198,7 +196,6 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             className="px-5 py-4 flex items-center gap-3 flex-shrink-0"
             style={{ borderTop: '1px solid var(--color-border-soft)' }}
           >
-            {/* Avatar */}
             <div
               className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
               style={{
@@ -229,7 +226,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         )}
       </AnimatePresence>
 
-      {/* Collapsed user avatar */}
+      {/* ── Collapsed user avatar ── */}
       <AnimatePresence>
         {sidebarCollapsed && config && (
           <motion.div
@@ -254,7 +251,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         )}
       </AnimatePresence>
 
-      {/* ── Collapse toggle ────────────────────────────────── */}
+      {/* ── Collapse toggle ── */}
       <button
         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         className="absolute -right-3.5 top-16 z-10 flex items-center justify-center"
@@ -280,7 +277,7 @@ function formatMB(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/* ── NavItem ──────────────────────────────────────────────────── */
+/* ── NavItem ── */
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -297,7 +294,7 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
+      className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
       style={{
         borderRadius: '6px',
         borderLeft: active ? undefined : '2px solid transparent',

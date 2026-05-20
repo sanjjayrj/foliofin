@@ -5,10 +5,11 @@ import LibraryScreen from '../screens/LibraryScreen';
 import DetailScreen from '../screens/DetailScreen';
 import ReaderScreen from '../screens/ReaderScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import DownloadsScreen from '../screens/DownloadsScreen';
 import { useAppStore } from '../../store';
 import { getLibraries } from '../../services/jellyfin';
 
-type Screen = 'library' | 'detail' | 'reader' | 'settings';
+type Screen = 'library' | 'detail' | 'reader' | 'settings' | 'downloads';
 
 const slide = {
   initial: { opacity: 0, x: 20 },
@@ -17,7 +18,7 @@ const slide = {
 };
 
 export default function AppShell() {
-  const { config, setLibraries, currentBook, setCurrentBook } = useAppStore();
+  const { config, setLibraries, currentBook, setCurrentBook, setSidebarCollapsed } = useAppStore();
   const [screen, setScreen] = useState<Screen>('library');
 
   const loadLibraries = useCallback(async () => {
@@ -30,13 +31,28 @@ export default function AppShell() {
 
   useEffect(() => { loadLibraries(); }, [loadLibraries]);
 
-  // Hide sidebar inside reader
-  const showSidebar = screen !== 'reader';
+  // Auto-collapse sidebar when window is narrow (Task #20)
+  useEffect(() => {
+    const BREAK = 820;
+    let wasNarrow = window.innerWidth < BREAK;
+    if (wasNarrow) setSidebarCollapsed(true);
 
+    const onResize = () => {
+      const narrow = window.innerWidth < BREAK;
+      if (narrow !== wasNarrow) {
+        setSidebarCollapsed(narrow);
+        wasNarrow = narrow;
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showSidebar = screen !== 'reader';
   const goTo = (s: Screen) => setScreen(s);
 
-  const handleOpenDetail = () => goTo('detail');
-  const handleOpenReader = () => goTo('reader');
+  const handleOpenDetail  = () => goTo('detail');
+  const handleOpenReader  = () => goTo('reader');
 
   const handleBackFromDetail = () => {
     setCurrentBook(null);
@@ -44,7 +60,6 @@ export default function AppShell() {
   };
 
   const handleBackFromReader = () => {
-    // Go back to detail if a book is still selected
     goTo(currentBook ? 'detail' : 'library');
   };
 
@@ -84,6 +99,12 @@ export default function AppShell() {
           {screen === 'settings' && (
             <motion.div key="settings" {...slide} transition={{ duration: 0.16 }} className="h-full">
               <SettingsScreen />
+            </motion.div>
+          )}
+
+          {screen === 'downloads' && (
+            <motion.div key="downloads" {...slide} transition={{ duration: 0.16 }} className="h-full">
+              <DownloadsScreen onOpenBook={handleOpenReader} />
             </motion.div>
           )}
         </AnimatePresence>

@@ -4,9 +4,11 @@ import { getDownloadUrl, detectFormat, updateProgress } from '../../services/jel
 import { readBook } from '../../services/storage';
 import { BookOpen } from 'lucide-react';
 import EpubReader from '../reader/EpubReader';
+import type { AnnotationControls, SearchFn } from '../reader/EpubReader';
 import PdfReader from '../reader/PdfReader';
 import ComicReader from '../reader/ComicReader';
 import ReaderControls from '../reader/ReaderControls';
+import type { Annotation } from '../../types/jellyfin';
 
 interface TocItem {
   id: string;
@@ -30,16 +32,22 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const {
     config, currentBook, readerSettings, setReaderSettings,
     progress, setProgress, downloads, preloadedBook,
+    annotations, addAnnotation, removeAnnotation,
   } = useAppStore();
 
   const prevPageRef = useRef<() => void>(() => {});
   const nextPageRef = useRef<() => void>(() => {});
   const tocNavRef   = useRef<(href: string) => void>(() => {});
+  const annotationControlsRef = useRef<AnnotationControls | null>(null);
+  const searchFnRef = useRef<SearchFn | null>(null);
+
   const [toc,         setToc]         = useState<TocItem[]>([]);
   const [currentPage, setCurrentPage] = useState<number | undefined>();
   const [totalPages,  setTotalPages]  = useState<number | undefined>();
   const [bookData,    setBookData]    = useState<Uint8Array | null>(null);
   const [loadError,   setLoadError]   = useState('');
+  const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
+  const [selectedQuote, setSelectedQuote] = useState('');
 
   /* ── Resolve book bytes ─────────────────────────────────────────── */
   useEffect(() => {
@@ -48,17 +56,13 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     setLoadError('');
 
     const fmt = detectFormat(currentBook);
-
-    // CBR: Rust reads from disk via localPath — no bytes needed in JS
     if (fmt === 'cbr') return;
 
-    // Prefer preloaded bytes (DetailScreen fetched these already — zero wait)
     if (preloadedBook?.id === currentBook.Id && preloadedBook.data instanceof Uint8Array) {
       setBookData(preloadedBook.data);
       return;
     }
 
-    // Fallback: read from disk or fetch from server
     const entry = downloads[currentBook.Id];
     if (entry) {
       readBook(entry.localPath)
@@ -75,6 +79,12 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     }
   }, [currentBook?.Id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Clear selection when page changes
+  useEffect(() => {
+    setSelectedCfi(null);
+    setSelectedQuote('');
+  }, [progress[currentBook?.Id ?? '']?.cfi]);
+
   if (!config || !currentBook) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: 'var(--color-bg)' }}>
@@ -89,30 +99,69 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const savedProgress = progress[currentBook.Id];
   const downloadEntry = downloads[currentBook.Id];
   const isOffline     = !!downloadEntry;
+  const bookAnnotations = annotations[currentBook.Id] ?? [];
 
   const handleProgress = useCallback((cfiOrPage: string | number, percentage: number) => {
     const isString = typeof cfiOrPage === 'string';
     if (!isString) setCurrentPage(cfiOrPage as number);
     setProgress(currentBook.Id, {
-      itemId:     currentBook.Id,
-      cfi:        isString ? (cfiOrPage as string) : undefined,
-      page:       isString ? undefined : (cfiOrPage as number),
+      itemId:    currentBook.Id,
+      cfi:       isString ? (cfiOrPage as string) : undefined,
+      page:      isString ? undefined : (cfiOrPage as number),
       percentage,
-      updatedAt:  Date.now(),
+      updatedAt: Date.now(),
     });
     if (percentage > 0) {
       updateProgress(config, currentBook.Id, Math.round(percentage * 10_000_000)).catch(() => {});
     }
   }, [config, currentBook.Id, setProgress]);
 
-  const handlePrevPage  = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
-  const handleNextPage  = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
-  const handleTocNav    = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
+  const handlePrevPage   = useCallback((h: () => void) => { prevPageRef.current = h; }, []);
+  const handleNextPage   = useCallback((h: () => void) => { nextPageRef.current = h; }, []);
+  const handleTocNav     = useCallback((h: (href: string) => void) => { tocNavRef.current = h; }, []);
   const handleTotalPages = useCallback((t: number) => setTotalPages(t), []);
   const handleComicProgress = useCallback((page: number, pct: number) => {
     setCurrentPage(page);
     handleProgress(page, pct);
   }, [handleProgress]);
+
+  const handleAnnotationControls = useCallback((controls: AnnotationControls) => {
+    annotationControlsRef.current = controls;
+  }, []);
+
+  const handleSearchReady = useCallback((fn: SearchFn) => {
+    searchFnRef.current = fn;
+  }, []);
+
+  const handleTextSelected = useCallback((cfi: string, quote: string) => {
+    setSelectedCfi(cfi);
+    setSelectedQuote(quote);
+  }, []);
+
+  const handleHighlight = useCallback((cfi: string, color: string) => {
+    annotationControlsRef.current?.add(cfi, color);
+    const ann: Annotation = {
+      id:        Date.now().toString(36) + Math.random().toString(36).slice(2),
+      bookId:    currentBook.Id,
+      cfiRange:  cfi,
+      color,
+      quote:     selectedQuote,
+      createdAt: Date.now(),
+    };
+    addAnnotation(ann);
+    setSelectedCfi(null);
+    setSelectedQuote('');
+  }, [currentBook.Id, selectedQuote, addAnnotation]);
+
+  const handleRemoveAnnotation = useCallback((ann: Annotation) => {
+    annotationControlsRef.current?.remove(ann.cfiRange);
+    removeAnnotation(ann.bookId, ann.id);
+  }, [removeAnnotation]);
+
+  const handleSearch = useCallback<SearchFn>(async (query: string) => {
+    if (!searchFnRef.current) return [];
+    return searchFnRef.current(query);
+  }, []);
 
   if (format === 'unknown' || format === 'mobi') {
     return (
@@ -123,43 +172,29 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           <p className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
             {format === 'mobi' ? 'MOBI is not supported — convert to EPUB' : 'Unknown file format'}
           </p>
-          <p className="text-xs mt-2 font-mono" style={{ color: 'var(--color-faint)' }}>
-            {currentBook.Path}
-          </p>
         </div>
-        <button
-          onClick={onBack}
-          className="text-sm px-5 py-2.5 mt-2"
-          style={{
-            color: 'var(--color-accent)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '5px',
-            background: 'transparent',
-          }}
-        >
+        <button onClick={onBack} className="text-sm px-5 py-2.5 mt-2"
+          style={{ color: 'var(--color-accent)', border: '1px solid var(--color-border)', borderRadius: '5px', background: 'transparent' }}>
           ← Back
         </button>
       </div>
     );
   }
 
-  /* Load error */
   if (loadError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4" style={{ background: 'var(--color-bg)' }}>
         <BookOpen size={40} style={{ color: 'var(--color-faint)' }} />
         <p className="text-sm text-center px-8" style={{ color: 'var(--color-red)' }}>{loadError}</p>
-        <button onClick={onBack} className="text-sm px-5 py-2.5" style={{ color: 'var(--color-accent)', border: '1px solid var(--color-border)', borderRadius: '5px', background: 'transparent' }}>
+        <button onClick={onBack} className="text-sm px-5 py-2.5"
+          style={{ color: 'var(--color-accent)', border: '1px solid var(--color-border)', borderRadius: '5px', background: 'transparent' }}>
           ← Back
         </button>
       </div>
     );
   }
 
-  /* CBR: no bytes needed — ComicReader uses localPath + Rust extraction */
-  const showCbr = (format === 'cbr');
-
-  /* Waiting for book bytes to resolve */
+  const showCbr = format === 'cbr';
   if (!bookData && !showCbr) {
     return (
       <div className="w-full h-full relative" style={{ background: 'var(--color-bg)' }}>
@@ -175,11 +210,15 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           bookData={bookData}
           settings={readerSettings}
           savedCfi={savedProgress?.cfi}
+          savedAnnotations={bookAnnotations}
           onProgress={(cfi, pct) => handleProgress(cfi, pct)}
           onTocReady={setToc}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
           onTocNavigate={handleTocNav}
+          onTextSelected={handleTextSelected}
+          onAnnotationControls={handleAnnotationControls}
+          onSearchReady={handleSearchReady}
         />
       )}
       {format === 'pdf' && bookData && (
@@ -216,11 +255,18 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         settings={readerSettings}
         toc={toc}
         isOffline={isOffline}
+        annotations={bookAnnotations}
+        selectedCfi={selectedCfi}
+        selectedQuote={selectedQuote}
         onBack={onBack}
         onPrevPage={() => prevPageRef.current()}
         onNextPage={() => nextPageRef.current()}
         onSettingsChange={s => setReaderSettings(s)}
         onTocNavigate={href => tocNavRef.current(href)}
+        onHighlight={handleHighlight}
+        onClearSelection={() => { setSelectedCfi(null); setSelectedQuote(''); }}
+        onRemoveAnnotation={handleRemoveAnnotation}
+        onSearch={format === 'epub' ? handleSearch : undefined}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import type {
   BookProgress,
   DownloadEntry,
   ActiveDownload,
+  Annotation,
 } from '../types/jellyfin';
 
 interface AppStore {
@@ -56,6 +57,11 @@ interface AppStore {
   setSidebarCollapsed: (v: boolean) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+
+  // Annotations — highlights saved per book
+  annotations: Record<string, Annotation[]>; // keyed by bookId
+  addAnnotation: (ann: Annotation) => void;
+  removeAnnotation: (bookId: string, annId: string) => void;
 
   // Transient: pre-read book bytes so reader opens with no I/O wait
   preloadedBook: { id: string; data: string | Uint8Array } | null;
@@ -123,6 +129,22 @@ export const useAppStore = create<AppStore>()(
       searchQuery: '',
       setSearchQuery: (searchQuery) => set({ searchQuery }),
 
+      annotations: {},
+      addAnnotation: (ann) =>
+        set((state) => ({
+          annotations: {
+            ...state.annotations,
+            [ann.bookId]: [...(state.annotations[ann.bookId] ?? []), ann],
+          },
+        })),
+      removeAnnotation: (bookId, annId) =>
+        set((state) => ({
+          annotations: {
+            ...state.annotations,
+            [bookId]: (state.annotations[bookId] ?? []).filter(a => a.id !== annId),
+          },
+        })),
+
       preloadedBook: null,
       setPreloadedBook: (preloadedBook) => set({ preloadedBook }),
     }),
@@ -135,6 +157,7 @@ export const useAppStore = create<AppStore>()(
         progress: state.progress,
         downloads: state.downloads,
         sidebarCollapsed: state.sidebarCollapsed,
+        annotations: state.annotations,
       }),
     }
   )
