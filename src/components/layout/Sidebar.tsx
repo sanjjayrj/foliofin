@@ -76,7 +76,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
               <p className="text-sm font-bold leading-none" style={{ color: 'var(--color-text)' }}>
                 FolioFin
               </p>
-              <p className="text-[11px] mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
+              <p className="text-xs mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
                 Jellyfin Reader
               </p>
             </motion.div>
@@ -95,7 +95,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-[10px] font-bold uppercase tracking-widest px-5 pb-2.5"
+                className="text-xs font-bold uppercase tracking-widest px-5 pb-2"
                 style={{ color: 'var(--color-faint)' }}
               >
                 Libraries
@@ -134,7 +134,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-[10px] font-bold uppercase tracking-widest px-5 pb-2.5"
+                className="text-xs font-bold uppercase tracking-widest px-5 pb-2"
                 style={{ color: 'var(--color-faint)' }}
               >
                 Collection
@@ -209,14 +209,14 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
               {userInitial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold truncate leading-none" style={{ color: 'var(--color-text)' }}>
+              <p className="text-sm font-semibold truncate leading-none" style={{ color: 'var(--color-text)' }}>
                 {config.userName}
               </p>
-              <p className="text-[10px] truncate mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
+              <p className="text-xs truncate mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
                 {config.serverUrl.replace(/^https?:\/\//, '')}
               </p>
               {downloadCount > 0 && (
-                <p className="text-[10px] mt-1 leading-none" style={{ color: 'var(--color-green)' }}>
+                <p className="text-xs mt-1 leading-none" style={{ color: 'var(--color-green)' }}>
                   {downloadCount} book{downloadCount !== 1 ? 's' : ''} on device
                   {totalBytes > 0 && ` · ${formatMB(totalBytes)}`}
                 </p>
@@ -294,7 +294,7 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
+      className={`w-full flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
       style={{
         borderRadius: '6px',
         borderLeft: active ? undefined : '2px solid transparent',
