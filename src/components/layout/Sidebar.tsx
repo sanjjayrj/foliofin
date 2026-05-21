@@ -41,7 +41,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
 
   return (
     <motion.aside
-      animate={{ width: sidebarCollapsed ? 64 : 260 }}
+      animate={{ width: sidebarCollapsed ? 76 : 288 }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
       className="relative flex flex-col h-full flex-shrink-0 overflow-hidden"
       style={{
@@ -51,19 +51,19 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
     >
       {/* ── Logo / Brand ── */}
       <div
-        className="flex items-center gap-3.5 px-5 py-5 flex-shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border-soft)', minHeight: 76 }}
+        className="flex items-center gap-3.5 px-6 py-6 flex-shrink-0"
+        style={{ borderBottom: '1px solid var(--color-border-soft)', minHeight: 88 }}
       >
         <div
           className="flex items-center justify-center flex-shrink-0"
           style={{
-            width: 34, height: 34,
+            width: 40, height: 40,
             background: 'linear-gradient(135deg, var(--color-accent-dim), var(--color-accent))',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(212,146,42,0.25)',
+            borderRadius: '10px',
+            boxShadow: '0 2px 10px rgba(212,146,42,0.28)',
           }}
         >
-          <BookOpen size={16} style={{ color: '#1a1208' }} />
+          <BookOpen size={20} style={{ color: '#1a1208' }} />
         </div>
         <AnimatePresence>
           {!sidebarCollapsed && (
@@ -73,7 +73,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
               exit={{ opacity: 0, x: -6 }}
               transition={{ duration: 0.12 }}
             >
-              <p className="text-sm font-bold leading-none" style={{ color: 'var(--color-text)' }}>
+              <p className="text-base font-bold leading-none" style={{ color: 'var(--color-text)' }}>
                 FolioFin
               </p>
               <p className="text-xs mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
@@ -107,7 +107,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             ? bookLibraries.map(lib => (
                 <NavItem
                   key={lib.ItemId}
-                  icon={<Library size={16} />}
+                  icon={<Library size={20} />}
                   label={lib.Name}
                   active={activeLibraryId === lib.ItemId && activeScreen === 'library'}
                   collapsed={sidebarCollapsed}
@@ -116,7 +116,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
               ))
             : (
               <NavItem
-                icon={<Library size={16} />}
+                icon={<Library size={20} />}
                 label="Library"
                 active={activeScreen === 'library'}
                 collapsed={sidebarCollapsed}
@@ -144,7 +144,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
 
           {inProgressCount > 0 && (
             <NavItem
-              icon={<Clock size={16} />}
+              icon={<Clock size={20} />}
               label="In Progress"
               badge={inProgressCount}
               active={false}
@@ -154,7 +154,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
           )}
 
           <NavItem
-            icon={<HardDrive size={16} />}
+            icon={<HardDrive size={20} />}
             label="Downloads"
             badge={downloadCount > 0 ? downloadCount : undefined}
             active={activeScreen === 'downloads'}
@@ -170,14 +170,14 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         style={{ borderTop: '1px solid var(--color-border-soft)' }}
       >
         <NavItem
-          icon={<Settings size={16} />}
+          icon={<Settings size={20} />}
           label="Settings"
           active={activeScreen === 'settings'}
           collapsed={sidebarCollapsed}
           onClick={() => onNavigate('settings')}
         />
         <NavItem
-          icon={<LogOut size={16} />}
+          icon={<LogOut size={20} />}
           label="Sign Out"
           active={false}
           collapsed={sidebarCollapsed}
@@ -193,7 +193,7 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-5 py-4 flex items-center gap-3 flex-shrink-0"
+            className="px-6 py-4 flex items-center gap-3.5 flex-shrink-0"
             style={{ borderTop: '1px solid var(--color-border-soft)' }}
           >
             <div
@@ -294,7 +294,7 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
+      className={`w-full flex items-center gap-3.5 px-6 py-4 text-base font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
       style={{
         borderRadius: '6px',
         borderLeft: active ? undefined : '2px solid transparent',
@@ -338,7 +338,7 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 leading-none"
+            className="flex-shrink-0 text-xs font-bold px-2 py-1 leading-none"
             style={{
               background: active ? 'rgba(212,146,42,0.25)' : 'var(--color-card)',
               border: `1px solid ${active ? 'rgba(212,146,42,0.4)' : 'var(--color-border)'}`,

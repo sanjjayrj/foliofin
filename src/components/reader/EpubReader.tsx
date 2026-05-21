@@ -193,6 +193,17 @@ export default function EpubReader({
       doc.addEventListener('click', (e: Event) => {
         e.stopImmediatePropagation();
       }, true);
+
+      // When the user interacts with the iframe (text selection, clicks), the iframe
+      // steals keyboard focus. Arrow-key events then fire inside the iframe document,
+      // not the parent window, so our page-navigation keydown handler stops receiving
+      // them. Re-dispatch them to the parent window so navigation keeps working.
+      doc.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+          e.preventDefault();
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true }));
+        }
+      });
     });
 
     book.ready
@@ -204,11 +215,26 @@ export default function EpubReader({
         if (savedAnnotations?.length) applyAnnotations(rendition, savedAnnotations);
 
         onSearchReady?.(async (query: string) => {
-          if (typeof (book as any).search !== 'function') return [];
+          const q = query.trim();
+          if (!q) return [];
+          const all: Array<{ cfi: string; excerpt: string }> = [];
           try {
-            const res = await (book as any).search(query);
-            return Array.isArray(res) ? res : [];
-          } catch { return []; }
+            // epub.js book.search() is unreliable across versions.
+            // Searching each spine item directly (item.find) is the stable API.
+            const spine = (book as any).spine;
+            const items: any[] = spine?.spineItems ?? spine?.items ?? [];
+            for (const item of items) {
+              try {
+                await item.load(book.load.bind(book));
+                const hits: any[] = item.find(q) ?? [];
+                for (const h of hits) {
+                  all.push({ cfi: String(h.cfi ?? ''), excerpt: String(h.excerpt ?? '') });
+                }
+                item.unload();
+              } catch { /* skip unreachable sections */ }
+            }
+          } catch { /* ignore */ }
+          return all;
         });
       })
       .catch((err: Error) => console.error('EpubReader: failed to open', err));
@@ -220,9 +246,8 @@ export default function EpubReader({
     });
 
     rendition.on('selected', (cfiRange: string, contents: { window: Window }) => {
-      if (!cfiRange.includes(',')) return;
       const quote = contents.window.getSelection()?.toString().trim() ?? '';
-      if (quote.length > 0) onTextSelected?.(cfiRange, quote);
+      if (cfiRange && quote.length > 0) onTextSelected?.(cfiRange, quote);
     });
 
     onAnnotationControls?.({
