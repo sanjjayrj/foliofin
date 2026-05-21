@@ -27,6 +27,7 @@ interface ReaderControlsProps {
   annotations?: Annotation[];
   selectedCfi?: string | null;
   selectedQuote?: string;
+  selectedPosition?: { x: number; y: number } | null;
   onBack: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -58,7 +59,7 @@ function stripHtml(html: string): string {
 export default function ReaderControls({
   title, author, currentPage, totalPages, progress,
   settings, toc = [], isOffline, annotations = [],
-  selectedCfi, selectedQuote,
+  selectedCfi, selectedPosition,
   onBack, onPrevPage, onNextPage,
   onSettingsChange, onTocNavigate, onSearchNavigate,
   onHighlight, onClearSelection,
@@ -76,12 +77,9 @@ export default function ReaderControls({
   const hideControls = () => { setVisible(false); setShowSettings(false); setLeftPanel('none'); };
   const toggleLeft   = (p: LeftPanel) => setLeftPanel(cur => cur === p ? 'none' : p);
 
-  // Auto-show bars whenever text is selected so the highlight color buttons
-  // in the top bar are always accessible.
+  // Keep tap strips and show-controls button disabled while a selection is active
+  // so the user doesn't accidentally navigate while the mini-toolbar is up.
   const hasSelection = Boolean(selectedCfi);
-  useEffect(() => {
-    if (selectedCfi) setVisible(true);
-  }, [selectedCfi]);
 
   // Focus the search input when the search panel opens.
   useEffect(() => {
@@ -179,107 +177,50 @@ export default function ReaderControls({
               <ArrowLeft size={18} /><span>Library</span>
             </button>
 
-            {/* Title + author — hidden when text is selected to make room for color swatches */}
-            {!hasSelection && (
-              <div className="flex-1 min-w-0 px-2 flex items-center gap-3 overflow-hidden">
-                <div className="min-w-0">
-                  <p className="text-base font-semibold truncate leading-snug" style={{ color: 'var(--color-text)' }}>{title}</p>
-                  {author && <p className="text-sm truncate leading-snug" style={{ color: 'var(--color-muted)' }}>{author}</p>}
-                </div>
-                {isOffline !== undefined && (
-                  <span
-                    className="flex items-center gap-1.5 font-semibold flex-shrink-0"
-                    style={{
-                      fontSize: 12,
-                      background: isOffline ? 'rgba(90,158,111,0.15)' : 'rgba(91,133,184,0.15)',
-                      border: `1px solid ${isOffline ? 'rgba(90,158,111,0.3)' : 'rgba(91,133,184,0.3)'}`,
-                      borderRadius: 5, padding: '4px 9px',
-                      color: isOffline ? 'var(--color-green)' : 'var(--color-blue)',
-                    }}
-                  >
-                    {isOffline ? <HardDrive size={11} /> : <Wifi size={11} />}
-                    {isOffline ? 'Offline' : 'Streaming'}
-                  </span>
-                )}
+            {/* Title + author */}
+            <div className="flex-1 min-w-0 px-2 flex items-center gap-3 overflow-hidden">
+              <div className="min-w-0">
+                <p className="text-base font-semibold truncate leading-snug" style={{ color: 'var(--color-text)' }}>{title}</p>
+                {author && <p className="text-sm truncate leading-snug" style={{ color: 'var(--color-muted)' }}>{author}</p>}
               </div>
-            )}
-
-            {/* Highlight color picker (inline in bar when text is selected) */}
-            {hasSelection && (
-              <div className="flex-1 flex items-center gap-2 px-2 overflow-hidden">
-                <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--color-faint)' }}>
-                  Highlight:
+              {isOffline !== undefined && (
+                <span
+                  className="flex items-center gap-1.5 font-semibold flex-shrink-0"
+                  style={{
+                    fontSize: 12,
+                    background: isOffline ? 'rgba(90,158,111,0.15)' : 'rgba(91,133,184,0.15)',
+                    border: `1px solid ${isOffline ? 'rgba(90,158,111,0.3)' : 'rgba(91,133,184,0.3)'}`,
+                    borderRadius: 5, padding: '4px 9px',
+                    color: isOffline ? 'var(--color-green)' : 'var(--color-blue)',
+                  }}
+                >
+                  {isOffline ? <HardDrive size={11} /> : <Wifi size={11} />}
+                  {isOffline ? 'Offline' : 'Streaming'}
                 </span>
-                {selectedQuote && (
-                  <span
-                    className="text-sm truncate italic flex-shrink min-w-0"
-                    style={{ color: 'var(--color-muted)', maxWidth: 180 }}
-                  >
-                    "{selectedQuote.slice(0, 52)}{selectedQuote.length > 52 ? '…' : ''}"
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Right side: icon buttons OR color swatches when text is selected */}
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {hasSelection ? (
-                // ── Color swatches ──
-                <>
-                  {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => (
-                    <button
-                      key={key}
-                      title={`Highlight ${key}`}
-                      onClick={() => { onHighlight?.(selectedCfi!, key); onClearSelection?.(); }}
-                      className="transition-transform hover:scale-110 active:scale-95 flex-shrink-0"
-                      style={{
-                        width: 28, height: 28, borderRadius: '50%',
-                        background: hex,
-                        border: '2.5px solid rgba(255,255,255,0.35)',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-                        margin: '0 2px',
-                      }}
-                    />
-                  ))}
-                  <button
-                    onClick={onClearSelection}
-                    title="Dismiss selection"
-                    style={{
-                      color: 'var(--color-faint)', flexShrink: 0,
-                      width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', background: 'none', border: 'none', borderRadius: 7, marginLeft: 2,
-                    }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-faint)')}
-                  >
-                    <X size={17} />
-                  </button>
-                </>
-              ) : (
-                // ── Normal icon buttons ──
-                <>
-                  {onSearch && (
-                    <CtrlBtn active={leftPanel === 'search'} onClick={() => { toggleLeft('search'); setShowSettings(false); }}>
-                      <Search size={19} />
-                    </CtrlBtn>
-                  )}
-                  <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
-                    <Bookmark size={19} />
-                  </CtrlBtn>
-                  {toc.length > 0 && (
-                    <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
-                      <List size={19} />
-                    </CtrlBtn>
-                  )}
-                  <CtrlBtn active={showSettings} onClick={() => { setShowSettings(v => !v); setLeftPanel('none'); }}>
-                    <Type size={19} />
-                  </CtrlBtn>
-                  <CtrlBtn active={false} onClick={hideControls}>
-                    <X size={19} />
-                  </CtrlBtn>
-                </>
               )}
+            </div>
+
+            {/* Right icon buttons */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {onSearch && (
+                <CtrlBtn active={leftPanel === 'search'} onClick={() => { toggleLeft('search'); setShowSettings(false); }}>
+                  <Search size={19} />
+                </CtrlBtn>
+              )}
+              <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
+                <Bookmark size={19} />
+              </CtrlBtn>
+              {toc.length > 0 && (
+                <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
+                  <List size={19} />
+                </CtrlBtn>
+              )}
+              <CtrlBtn active={showSettings} onClick={() => { setShowSettings(v => !v); setLeftPanel('none'); }}>
+                <Type size={19} />
+              </CtrlBtn>
+              <CtrlBtn active={false} onClick={hideControls}>
+                <X size={19} />
+              </CtrlBtn>
             </div>
           </motion.div>
         )}
@@ -466,6 +407,80 @@ export default function ReaderControls({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Always-visible slim progress strip at the bottom edge ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 pointer-events-none"
+        style={{ height: 3, background: 'rgba(255,255,255,0.06)', zIndex: 6 }}
+      >
+        <motion.div
+          className="h-full"
+          style={{ background: 'var(--color-accent)', opacity: 0.7 }}
+          animate={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+
+      {/* ── Floating mini highlight toolbar (appears near the selection) ── */}
+      {selectedCfi && selectedPosition && (
+        <div
+          className="fixed flex items-center gap-1.5 px-3 py-2"
+          style={{
+            left: Math.max(100, Math.min(window.innerWidth - 100, selectedPosition.x)),
+            top: Math.max(8, selectedPosition.y - 54),
+            transform: 'translateX(-50%)',
+            zIndex: 100,
+            background: 'rgba(14,13,15,0.96)',
+            border: '1px solid rgba(255,255,255,0.13)',
+            borderRadius: 12,
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.6)',
+            pointerEvents: 'auto',
+          }}
+        >
+          {/* Down-pointing caret */}
+          <div
+            className="absolute"
+            style={{
+              bottom: -7, left: '50%', transform: 'translateX(-50%)',
+              width: 0, height: 0,
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '7px solid rgba(14,13,15,0.96)',
+            }}
+          />
+          {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => (
+            <button
+              key={key}
+              title={`Highlight ${key}`}
+              onClick={() => onHighlight?.(selectedCfi!, key)}
+              style={{
+                width: 26, height: 26, borderRadius: '50%',
+                background: hex,
+                border: '2.5px solid rgba(255,255,255,0.3)',
+                cursor: 'pointer', flexShrink: 0,
+              }}
+              onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)')}
+              onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)')}
+            />
+          ))}
+          <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.12)', margin: '0 4px', flexShrink: 0 }} />
+          <button
+            onClick={onClearSelection}
+            title="Dismiss"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, borderRadius: 7,
+              color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none',
+              cursor: 'pointer', flexShrink: 0,
+            }}
+            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.9)')}
+            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.4)')}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── Left panel: TOC / Search / Annotations ── */}
       <AnimatePresence>

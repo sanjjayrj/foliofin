@@ -101,8 +101,8 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-xs font-bold uppercase tracking-widest px-5 pb-2"
-                style={{ color: 'var(--color-faint)' }}
+                className="text-xs font-bold uppercase tracking-widest pb-2"
+                style={{ color: 'var(--color-faint)', paddingLeft: 26 }}
               >
                 Libraries
               </motion.p>
@@ -140,8 +140,8 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-xs font-bold uppercase tracking-widest px-5 pb-2"
-                style={{ color: 'var(--color-faint)' }}
+                className="text-xs font-bold uppercase tracking-widest pb-2"
+                style={{ color: 'var(--color-faint)', paddingLeft: 26 }}
               >
                 Collection
               </motion.p>
@@ -273,17 +273,24 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         className="absolute -right-3.5 top-16 z-10 flex items-center justify-center"
         style={{
-          width: 24, height: 24,
-          background: 'var(--color-card)',
+          width: 28, height: 28,
+          background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
           borderRadius: '50%',
           color: 'var(--color-muted)',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+          cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.04)',
         }}
-        onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-accent)')}
-        onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)')}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-accent)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent-dim)';
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-muted)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)';
+        }}
       >
-        {sidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
     </motion.aside>
   );
@@ -318,8 +325,8 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
       title={collapsed ? label : undefined}
       className={`flex items-center gap-3.5 text-base font-medium transition-all ${active ? 'nav-active' : ''}`}
       style={{
-        width: 'calc(100% - 20px)',
-        margin: '2px 10px',
+        width: 'calc(100% - 24px)',
+        margin: '2px 12px',
         padding: collapsed ? '13px 0' : '13px 16px',
         justifyContent: collapsed ? 'center' : undefined,
         borderRadius: '13px',

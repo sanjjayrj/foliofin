@@ -47,8 +47,9 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const [totalPages,  setTotalPages]  = useState<number | undefined>();
   const [bookData,    setBookData]    = useState<Uint8Array | null>(null);
   const [loadError,   setLoadError]   = useState('');
-  const [selectedCfi, setSelectedCfi] = useState<string | null>(null);
-  const [selectedQuote, setSelectedQuote] = useState('');
+  const [selectedCfi,      setSelectedCfi]      = useState<string | null>(null);
+  const [selectedQuote,    setSelectedQuote]    = useState('');
+  const [selectedPosition, setSelectedPosition] = useState<{ x: number; y: number } | null>(null);
 
   /* ── Resolve book bytes ─────────────────────────────────────────── */
   useEffect(() => {
@@ -84,6 +85,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   useEffect(() => {
     setSelectedCfi(null);
     setSelectedQuote('');
+    setSelectedPosition(null);
   }, [progress[currentBook?.Id ?? '']?.cfi]);
 
   if (!config || !currentBook) {
@@ -139,9 +141,10 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     searchFnRef.current = fn;
   }, []);
 
-  const handleTextSelected = useCallback((cfi: string, quote: string) => {
+  const handleTextSelected = useCallback((cfi: string, quote: string, position?: { x: number; y: number }) => {
     setSelectedCfi(cfi);
     setSelectedQuote(quote);
+    setSelectedPosition(position ?? null);
   }, []);
 
   const handleHighlight = useCallback((cfi: string, color: string) => {
@@ -157,6 +160,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     addAnnotation(ann);
     setSelectedCfi(null);
     setSelectedQuote('');
+    setSelectedPosition(null);
   }, [currentBook.Id, selectedQuote, addAnnotation]);
 
   const handleRemoveAnnotation = useCallback((ann: Annotation) => {
@@ -275,8 +279,9 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         onNextPage={() => nextPageRef.current()}
         onSettingsChange={s => setReaderSettings(s)}
         onTocNavigate={href => tocNavRef.current(href)}
+        selectedPosition={selectedPosition}
         onHighlight={handleHighlight}
-        onClearSelection={() => { setSelectedCfi(null); setSelectedQuote(''); }}
+        onClearSelection={() => { setSelectedCfi(null); setSelectedQuote(''); setSelectedPosition(null); }}
         onRemoveAnnotation={handleRemoveAnnotation}
         onSearch={format === 'epub' ? handleSearch : undefined}
         onSearchNavigate={format === 'epub' ? handleSearchNavigate : undefined}

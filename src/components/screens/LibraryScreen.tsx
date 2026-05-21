@@ -120,9 +120,9 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
 
         {/* Controls row */}
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Pill search input */}
-          <div className="relative flex-1" style={{ minWidth: 200, maxWidth: 360 }}>
-            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+          {/* Search input */}
+          <div className="relative flex-1" style={{ minWidth: 220, maxWidth: 440 }}>
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
               style={{ color: 'var(--color-faint)' }} />
             <input
               ref={searchRef}
@@ -134,17 +134,24 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
                 width: '100%',
                 background: 'var(--color-card)',
                 border: '1px solid var(--color-border)',
-                borderRadius: '22px',
+                borderRadius: '12px',
                 color: 'var(--color-text)',
-                paddingLeft: 40,
-                paddingRight: searchQuery ? 36 : 16,
-                paddingTop: 10,
-                paddingBottom: 10,
+                paddingLeft: 44,
+                paddingRight: searchQuery ? 40 : 16,
+                paddingTop: 13,
+                paddingBottom: 13,
                 fontSize: 14,
                 outline: 'none',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.12)',
               }}
-              onFocus={e => (e.target.style.borderColor = 'var(--color-accent-dim)')}
-              onBlur={e => (e.target.style.borderColor = 'var(--color-border)')}
+              onFocus={e => {
+                e.target.style.borderColor = 'var(--color-accent-dim)';
+                e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.12), 0 0 0 3px rgba(212,146,42,0.1)';
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = 'var(--color-border)';
+                e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.12)';
+              }}
             />
             {searchQuery && (
               <button
@@ -152,7 +159,7 @@ export default function LibraryScreen({ onOpenBook }: LibraryScreenProps) {
                 className="absolute right-3.5 top-1/2 -translate-y-1/2"
                 style={{ color: 'var(--color-faint)', background: 'none', border: 'none', cursor: 'pointer' }}
               >
-                <X size={14} />
+                <X size={15} />
               </button>
             )}
           </div>

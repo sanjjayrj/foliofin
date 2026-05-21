@@ -28,7 +28,7 @@ interface EpubReaderProps {
   onPrevPage:            (handler: () => void) => void;
   onNextPage:            (handler: () => void) => void;
   onTocNavigate:         (handler: (href: string) => void) => void;
-  onTextSelected?:       (cfiRange: string, quote: string) => void;
+  onTextSelected?:       (cfiRange: string, quote: string, position?: { x: number; y: number }) => void;
   onAnnotationControls?: (controls: AnnotationControls) => void;
   onSearchReady?:        (fn: SearchFn) => void;
   onSearchNavigate?:     (handler: (cfi: string) => void) => void;
@@ -185,6 +185,10 @@ export default function EpubReader({
     // Most-recent relocated CFI — used to push accurate progress once locations finish
     // generating in the background.
     let lastKnownCfi = '';
+    // Timestamp of the last mouseup that successfully called onTextSelected.
+    // Used to suppress the epub.js 'selected' event that fires ~250 ms later,
+    // so it doesn't overwrite the position captured in mouseup.
+    let lastMouseUpFiredAt = 0;
 
     // ── Attach all per-iframe listeners once per unique Document ──────────────
     const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement | undefined) => {
@@ -194,82 +198,62 @@ export default function EpubReader({
       // 1. Block epub.js's capture-phase click-nav so our tap strips handle navigation.
       doc.addEventListener('click', (e: Event) => e.stopImmediatePropagation(), true);
 
-      // 2. Arrow-key mirroring: when the iframe has keyboard focus (after a click or
-      //    text selection), arrow key events fire in the iframe's context and never
-      //    reach our parent-window handler. Attaching to the iframe's contentWindow
-      //    (the last stop in the iframe's event bubble chain) catches them reliably
-      //    without the risk of double-firing that attaching to both doc AND window
-      //    would cause. e.preventDefault() stops the browser from moving the text
-      //    cursor; the dispatched parent-window event flips the page.
+      // 2. Arrow-key mirroring — call navigate() directly from the iframe keydown
+      //    event so arrow keys flip pages even when the iframe holds focus.
+      //    Calling navigate() directly is more reliable than dispatching a synthetic
+      //    KeyboardEvent to the parent window, which can be silently dropped.
       const mirrorArrow = (e: KeyboardEvent) => {
         if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
           e.preventDefault();
-          window.dispatchEvent(
-            new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true })
-          );
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            navigate(() => renditionRef.current?.next(),  1);
+          } else {
+            navigate(() => renditionRef.current?.prev(), -1);
+          }
         }
       };
       const iframeWin = iframeEl?.contentWindow;
       if (iframeWin && (iframeWin as Window) !== window) {
         iframeWin.addEventListener('keydown', mirrorArrow);
       } else {
-        // Fallback: attach to document if contentWindow isn't accessible
         doc.addEventListener('keydown', mirrorArrow);
       }
 
-      // 3. Text-selection detection via selectionchange.
-      //    selectionchange fires continuously while the user drags, then settles.
-      //    We debounce 180 ms (shorter than epub.js's internal 250 ms) so our
-      //    handler fires first and captures the CFI while the selection is still live.
-      //    We use doc.defaultView?.getSelection() which reads from the iframe's
-      //    selection context — not the parent window's.
-      let selTimer: ReturnType<typeof setTimeout> | null = null;
-      let hasActiveSelection = false;
+      // 3. selectionchange — kept for the side-effect of keeping the event chain
+      //    alive; actual CFI extraction happens in mouseup (step 4).
+      doc.addEventListener('selectionchange', () => { /* tracking */ });
 
-      doc.addEventListener('selectionchange', () => {
-        if (selTimer) { clearTimeout(selTimer); selTimer = null; }
-        const sel = doc.defaultView?.getSelection?.();
-        hasActiveSelection = !!(
-          sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length >= 2
-        );
-        if (!hasActiveSelection) return;
-
-        selTimer = setTimeout(() => {
-          selTimer = null;
-          const s = doc.defaultView?.getSelection?.();
-          if (!s || s.isCollapsed || !s.rangeCount) return;
-          const quote = s.toString().trim();
-          if (quote.length < 2) return;
-          try {
-            const range = s.getRangeAt(0);
-            // currentContents is updated on every rendered event, so it always
-            // refers to the section whose iframe is currently visible.
-            const cfi: string = currentContents?.cfiFromRange?.(range) ?? '';
-            if (cfi) onTextSelected?.(cfi, quote);
-          } catch { /* cfiFromRange failed — epub.js selected event is the fallback */ }
-        }, 180);
-      });
-
-      // 4. Mouseup: reclaim keyboard focus to prevent the epub iframe from holding
-      //    it after plain clicks (which causes arrow keys to move the text caret
-      //    instead of flipping pages). When text IS selected we intentionally leave
-      //    focus in the iframe — the arrow-key mirror above keeps navigation working,
-      //    and the blue selection highlight stays visible while the user picks a color.
+      // 4. Mouseup: primary handler for text-selection events.
+      //    On a plain click we reclaim keyboard focus so arrow keys flip pages.
+      //    On a selection we compute the bounding rect of the selected range in
+      //    parent-window coordinates and call onTextSelected with a position hint
+      //    so the floating mini-toolbar can appear near the selected text.
       doc.addEventListener('mouseup', () => {
-        // Re-read selection state synchronously on mouseup (selectionchange may fire
-        // slightly after mouseup in some browsers, so we check again here).
         const sel = doc.defaultView?.getSelection?.();
         const liveSelection = !!(
           sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length >= 2
         );
-        hasActiveSelection = liveSelection;
 
-        if (!liveSelection) {
-          // Plain click with no selection: reclaim focus → removes text caret from iframe
+        if (liveSelection && sel) {
+          try {
+            const range   = sel.getRangeAt(0);
+            const selRect = range.getBoundingClientRect();
+            const ifrRect = iframeEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+            const pos = {
+              x: ifrRect.left + selRect.left + selRect.width / 2,
+              y: ifrRect.top  + selRect.top,
+            };
+            const quote = sel.toString().trim();
+            const cfi: string = currentContents?.cfiFromRange?.(range) ?? '';
+            if (cfi && quote.length >= 2) {
+              lastMouseUpFiredAt = Date.now();
+              onTextSelected?.(cfi, quote, pos);
+            }
+          } catch { /* cfiFromRange failed — 'selected' event is the fallback */ }
+        } else {
+          // Plain click with no selection: reclaim focus → removes text caret from iframe.
           setTimeout(() => window.focus(), 80);
         }
-        // With an active selection: don't focus-steal.
-        // The user needs to click a highlight-color button in the top bar.
       });
     };
 
@@ -372,14 +356,14 @@ export default function EpubReader({
       }
     });
 
-    // epub.js 'selected' event as a secondary / fallback path.
-    // Fires after epub.js's own 250 ms debounce with a CFI it computed internally —
-    // useful if cfiFromRange isn't available in the current build or threw above.
+    // epub.js 'selected' event — fires ~250 ms after mouseup as a fallback
+    // (e.g. keyboard selection where mouseup never fires). Skip it when mouseup
+    // already handled this selection so we don't overwrite the position hint.
     rendition.on('selected', (cfiRange: string, contents: { window: Window }) => {
+      if (Date.now() - lastMouseUpFiredAt < 600) return;
       const quote = contents.window.getSelection()?.toString().trim() ?? '';
       if (cfiRange && quote.length > 0) {
         onTextSelected?.(cfiRange, quote);
-        // Do NOT call window.focus() here: the user still needs to pick a color.
       }
     });
 
