@@ -51,8 +51,14 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
     >
       {/* ── Logo / Brand ── */}
       <div
-        className="flex items-center gap-3.5 px-6 py-6 flex-shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border-soft)', minHeight: 88 }}
+        className="flex items-center flex-shrink-0"
+        style={{
+          borderBottom: '1px solid var(--color-border-soft)',
+          minHeight: 88,
+          padding: sidebarCollapsed ? '24px 0' : '24px 24px',
+          gap: sidebarCollapsed ? 0 : 14,
+          justifyContent: sidebarCollapsed ? 'center' : undefined,
+        }}
       >
         <div
           className="flex items-center justify-center flex-shrink-0"
@@ -193,34 +199,45 @@ export default function Sidebar({ activeScreen, onNavigate }: SidebarProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-6 py-4 flex items-center gap-3.5 flex-shrink-0"
-            style={{ borderTop: '1px solid var(--color-border-soft)' }}
+            className="flex-shrink-0"
+            style={{ borderTop: '1px solid var(--color-border-soft)', padding: '8px 10px' }}
           >
+            {/* Pill card — matches nav item margin / floating aesthetic */}
             <div
-              className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+              className="flex items-center gap-3"
               style={{
-                width: 30, height: 30,
-                background: 'var(--color-accent-bg)',
-                border: '1px solid rgba(212,146,42,0.3)',
-                borderRadius: '50%',
-                color: 'var(--color-accent)',
+                padding: '10px 14px',
+                background: 'var(--color-raised)',
+                border: '1px solid var(--color-border-soft)',
+                borderRadius: 12,
               }}
             >
-              {userInitial}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold truncate leading-none" style={{ color: 'var(--color-text)' }}>
-                {config.userName}
-              </p>
-              <p className="text-xs truncate mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
-                {config.serverUrl.replace(/^https?:\/\//, '')}
-              </p>
-              {downloadCount > 0 && (
-                <p className="text-xs mt-1 leading-none" style={{ color: 'var(--color-green)' }}>
-                  {downloadCount} book{downloadCount !== 1 ? 's' : ''} on device
-                  {totalBytes > 0 && ` · ${formatMB(totalBytes)}`}
+              <div
+                className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                style={{
+                  width: 30, height: 30,
+                  background: 'var(--color-accent-bg)',
+                  border: '1px solid rgba(212,146,42,0.3)',
+                  borderRadius: '50%',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                {userInitial}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate leading-none" style={{ color: 'var(--color-text)' }}>
+                  {config.userName}
                 </p>
-              )}
+                <p className="text-xs truncate mt-1 leading-none" style={{ color: 'var(--color-faint)' }}>
+                  {config.serverUrl.replace(/^https?:\/\//, '')}
+                </p>
+                {downloadCount > 0 && (
+                  <p className="text-xs mt-1 leading-none" style={{ color: 'var(--color-green)' }}>
+                    {downloadCount} book{downloadCount !== 1 ? 's' : ''} on device
+                    {totalBytes > 0 && ` · ${formatMB(totalBytes)}`}
+                  </p>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -290,20 +307,29 @@ interface NavItemProps {
 }
 
 function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: NavItemProps) {
+  // Pill shape: inset from sidebar edges with margin so rounded corners are clearly visible.
+  // This matches the floating-pill aesthetic of the reader bars.
+  const activeColor  = 'var(--color-accent-soft)';
+  const defaultColor = danger ? 'var(--color-faint)' : 'var(--color-muted)';
+
   return (
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3.5 px-6 py-4 text-base font-medium transition-all ${collapsed ? 'justify-center' : ''} ${active ? 'nav-active' : ''}`}
+      className={`flex items-center gap-3.5 text-base font-medium transition-all ${active ? 'nav-active' : ''}`}
       style={{
-        borderRadius: '6px',
-        borderLeft: active ? undefined : '2px solid transparent',
-        color: active
-          ? 'var(--color-accent-soft)'
-          : danger
-          ? 'var(--color-faint)'
-          : 'var(--color-muted)',
-        background: active ? 'var(--color-accent-bg)' : 'transparent',
+        width: 'calc(100% - 20px)',
+        margin: '2px 10px',
+        padding: collapsed ? '13px 0' : '13px 16px',
+        justifyContent: collapsed ? 'center' : undefined,
+        borderRadius: '13px',
+        border: 'none',
+        color: active ? activeColor : defaultColor,
+        background: active
+          ? 'linear-gradient(135deg, rgba(212,146,42,0.18), rgba(212,146,42,0.12))'
+          : 'transparent',
+        boxShadow: active ? 'inset 0 0 0 1px rgba(212,146,42,0.28)' : 'none',
+        cursor: 'pointer',
       }}
       onMouseEnter={e => {
         if (!active) {
@@ -314,7 +340,7 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
       onMouseLeave={e => {
         if (!active) {
           (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-          (e.currentTarget as HTMLButtonElement).style.color = danger ? 'var(--color-faint)' : 'var(--color-muted)';
+          (e.currentTarget as HTMLButtonElement).style.color = defaultColor;
         }
       }}
     >
@@ -338,14 +364,14 @@ function NavItem({ icon, label, badge, active, collapsed, onClick, danger }: Nav
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="flex-shrink-0 text-xs font-bold px-2 py-1 leading-none"
+            className="flex-shrink-0 text-xs font-bold leading-none"
             style={{
-              background: active ? 'rgba(212,146,42,0.25)' : 'var(--color-card)',
-              border: `1px solid ${active ? 'rgba(212,146,42,0.4)' : 'var(--color-border)'}`,
-              borderRadius: '10px',
+              background: active ? 'rgba(212,146,42,0.28)' : 'var(--color-raised)',
+              border: `1px solid ${active ? 'rgba(212,146,42,0.45)' : 'var(--color-border)'}`,
+              borderRadius: '12px',
               color: active ? 'var(--color-accent-soft)' : 'var(--color-faint)',
-              minWidth: 20,
-              textAlign: 'center',
+              minWidth: 22, textAlign: 'center',
+              padding: '3px 7px',
             }}
           >
             {badge}

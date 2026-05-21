@@ -1,17 +1,24 @@
 import { useState } from 'react';
-import { Server, User, Trash2, BookOpen, RefreshCw, HardDrive } from 'lucide-react';
+import { Server, User, Trash2, BookOpen, RefreshCw, HardDrive, Palette } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { authenticate } from '../../services/jellyfin';
 import { deleteBook, formatBytes } from '../../services/storage';
 import type { AppConfig, BookFormat } from '../../types/jellyfin';
 
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
+const CARD: React.CSSProperties = {
   background: 'var(--color-card)',
   border: '1px solid var(--color-border)',
-  borderRadius: '5px',
+  borderRadius: 14,
+  padding: '20px 24px',
+};
+
+const fieldStyle: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 10,
   color: 'var(--color-text)',
-  padding: '9px 12px',
+  padding: '11px 14px',
   fontSize: '14px',
   outline: 'none',
 };
@@ -64,55 +71,52 @@ export default function SettingsScreen() {
       await deleteBook(itemId, format);
       removeDownload(itemId);
     } catch {}
-    finally {
-      setDeletingId(null);
-    }
+    finally { setDeletingId(null); }
   };
 
   const handleDeleteAll = async () => {
     if (!confirm(`Delete all ${downloadList.length} downloaded books from device?`)) return;
     for (const entry of downloadList) {
-      try {
-        await deleteBook(entry.itemId, entry.format);
-        removeDownload(entry.itemId);
-      } catch {}
+      try { await deleteBook(entry.itemId, entry.format); removeDownload(entry.itemId); } catch {}
     }
   };
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
-      <div className="max-w-xl mx-auto px-8 py-8 flex flex-col gap-10">
+      <div className="max-w-xl mx-auto px-8 py-10 flex flex-col gap-8">
 
+        {/* Page title */}
         <div>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>Settings</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>Settings</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-faint)' }}>Manage your server connection and reading preferences</p>
         </div>
 
-        {/* Server */}
-        <Section icon={<Server size={15} />} title="Server">
+        {/* ── Server ── */}
+        <SectionCard icon={<Server size={16} />} title="Server Connection">
           {config && (
             <div
-              className="flex items-center gap-3 px-4 py-3 mb-4"
-              style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '6px' }}
+              className="flex items-center gap-3 px-4 py-3 mb-5"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-soft)', borderRadius: 10 }}
             >
               <div
-                className="w-8 h-8 flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-raised)', border: '1px solid var(--color-border)', borderRadius: '5px' }}
+                className="w-9 h-9 flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--color-accent-bg)', border: '1px solid var(--color-accent-dim)', borderRadius: 8 }}
               >
                 <User size={15} style={{ color: 'var(--color-accent)' }} />
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{config.userName}</p>
-                <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-muted)' }}>{config.serverUrl}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{config.userName}</p>
+                <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-muted)' }}>{config.serverUrl.replace(/^https?:\/\//, '')}</p>
               </div>
               <span
-                className="ml-auto text-[11px] font-semibold px-2 py-0.5 flex-shrink-0"
-                style={{ color: 'var(--color-green)', background: 'rgba(90,158,111,0.12)', border: '1px solid rgba(90,158,111,0.25)', borderRadius: '3px' }}
+                className="text-xs font-bold px-2.5 py-1 flex-shrink-0"
+                style={{ color: 'var(--color-green)', background: 'rgba(90,158,111,0.12)', border: '1px solid rgba(90,158,111,0.25)', borderRadius: 20 }}
               >
                 Connected
               </span>
             </div>
           )}
-          <form onSubmit={handleReconnect} className="flex flex-col gap-3">
+          <form onSubmit={handleReconnect} className="flex flex-col gap-4">
             <FieldGroup label="Server URL">
               <input type="url" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} style={fieldStyle} />
             </FieldGroup>
@@ -130,11 +134,11 @@ export default function SettingsScreen() {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-2 text-sm font-medium px-4 py-2"
+                className="flex items-center gap-2 text-sm font-semibold px-5 py-2.5"
                 style={{
-                  background: 'var(--color-card)',
+                  background: saving ? 'var(--color-surface)' : 'var(--color-card)',
                   border: '1px solid var(--color-border)',
-                  borderRadius: '5px',
+                  borderRadius: 22,
                   color: saving ? 'var(--color-faint)' : 'var(--color-text)',
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}
@@ -144,87 +148,12 @@ export default function SettingsScreen() {
               </button>
             </div>
           </form>
-        </Section>
+        </SectionCard>
 
-        {/* Downloaded Books */}
-        <Section icon={<HardDrive size={15} />} title="Downloaded Books">
-          {downloadList.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--color-faint)' }}>
-              No books downloaded yet. Open a book's detail page to download it for offline reading.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {/* Stats row */}
-              <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '6px' }}
-              >
-                <div className="flex items-center gap-2">
-                  <HardDrive size={14} style={{ color: 'var(--color-accent)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                    {downloadList.length} {downloadList.length === 1 ? 'book' : 'books'}
-                  </span>
-                  <span className="text-sm" style={{ color: 'var(--color-faint)' }}>
-                    · {formatBytes(totalBytes)} total
-                  </span>
-                </div>
-                <button
-                  onClick={handleDeleteAll}
-                  className="text-xs font-medium px-3 py-1"
-                  style={{
-                    color: 'var(--color-red)',
-                    background: 'rgba(201,95,95,0.08)',
-                    border: '1px solid rgba(201,95,95,0.2)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Delete All
-                </button>
-              </div>
-
-              {/* Book list */}
-              <div className="flex flex-col gap-2">
-                {downloadList.map((entry) => (
-                  <div
-                    key={entry.itemId}
-                    className="flex items-center gap-3 px-4 py-3"
-                    style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '6px' }}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
-                        {entry.bookName}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>
-                        {entry.format.toUpperCase()} · {formatBytes(entry.fileSize)} · {new Date(entry.downloadedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteDownload(entry.itemId, entry.format)}
-                      disabled={deletingId === entry.itemId}
-                      title="Remove from device"
-                      className="flex-shrink-0 p-1.5"
-                      style={{
-                        color: deletingId === entry.itemId ? 'var(--color-faint)' : 'var(--color-red)',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: deletingId === entry.itemId ? 'not-allowed' : 'pointer',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Section>
-
-        {/* Reading */}
-        <Section icon={<BookOpen size={15} />} title="Reading Defaults">
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
+        {/* ── Reading defaults ── */}
+        <SectionCard icon={<Palette size={16} />} title="Reading Defaults">
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-2 gap-4">
               <FieldGroup label="Theme">
                 <select
                   value={readerSettings.theme}
@@ -248,72 +177,166 @@ export default function SettingsScreen() {
                 </select>
               </FieldGroup>
             </div>
+
             <FieldGroup label={`Font Size — ${readerSettings.fontSize}px`}>
-              <input type="range" min={12} max={32} value={readerSettings.fontSize}
-                onChange={(e) => setReaderSettings({ fontSize: Number(e.target.value) })}
-                className="w-full" style={{ accentColor: 'var(--color-accent)' }}
-              />
+              <div className="flex items-center gap-4">
+                <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-faint)' }}>12</span>
+                <input
+                  type="range" min={12} max={32} value={readerSettings.fontSize}
+                  onChange={(e) => setReaderSettings({ fontSize: Number(e.target.value) })}
+                  className="flex-1"
+                  style={{ accentColor: 'var(--color-accent)' }}
+                />
+                <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-faint)' }}>32</span>
+              </div>
             </FieldGroup>
           </div>
-        </Section>
+        </SectionCard>
 
-        {/* Stats */}
-        <Section title="Reading Stats">
-          <div className="grid grid-cols-3 gap-3">
+        {/* ── Downloaded books ── */}
+        <SectionCard icon={<HardDrive size={16} />} title="Downloaded Books">
+          {downloadList.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--color-faint)' }}>
+              No books downloaded yet. Open any book and tap Download to save it for offline reading.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {/* Stats row */}
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-soft)', borderRadius: 10 }}
+              >
+                <div className="flex items-center gap-2">
+                  <HardDrive size={14} style={{ color: 'var(--color-accent)' }} />
+                  <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {downloadList.length} {downloadList.length === 1 ? 'book' : 'books'}
+                  </span>
+                  <span className="text-sm" style={{ color: 'var(--color-faint)' }}>
+                    · {formatBytes(totalBytes)} total
+                  </span>
+                </div>
+                <button
+                  onClick={handleDeleteAll}
+                  className="text-xs font-semibold px-3 py-1.5"
+                  style={{
+                    color: 'var(--color-red)',
+                    background: 'rgba(201,95,95,0.08)',
+                    border: '1px solid rgba(201,95,95,0.2)',
+                    borderRadius: 20,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Delete All
+                </button>
+              </div>
+
+              {/* Book list */}
+              <div className="flex flex-col gap-2">
+                {downloadList.map((entry) => (
+                  <div
+                    key={entry.itemId}
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-soft)', borderRadius: 10 }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+                        {entry.bookName}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>
+                        {entry.format.toUpperCase()} · {formatBytes(entry.fileSize)} · {new Date(entry.downloadedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteDownload(entry.itemId, entry.format)}
+                      disabled={deletingId === entry.itemId}
+                      title="Remove from device"
+                      className="flex-shrink-0 flex items-center justify-center"
+                      style={{
+                        width: 32, height: 32,
+                        color: deletingId === entry.itemId ? 'var(--color-faint)' : 'var(--color-red)',
+                        background: 'transparent',
+                        border: '1px solid rgba(201,95,95,0.2)',
+                        cursor: deletingId === entry.itemId ? 'not-allowed' : 'pointer',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Reading stats ── */}
+        <SectionCard icon={<BookOpen size={16} />} title="Reading Stats">
+          <div className="grid grid-cols-3 gap-3 mb-5">
             {[
               { label: 'In Progress', value: totalTracked - readCount },
-              { label: 'Completed', value: readCount },
+              { label: 'Completed',   value: readCount },
               { label: 'Total Tracked', value: totalTracked },
             ].map((s) => (
               <div
                 key={s.label}
                 className="flex flex-col items-center py-5"
-                style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: '6px' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-soft)', borderRadius: 12 }}
               >
                 <span className="text-2xl font-bold" style={{ color: 'var(--color-accent)' }}>{s.value}</span>
-                <span className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>{s.label}</span>
+                <span className="text-xs mt-1.5 text-center" style={{ color: 'var(--color-muted)' }}>{s.label}</span>
               </div>
             ))}
           </div>
-          <div className="mt-4">
-            <DangerBtn
-              icon={<Trash2 size={13} />}
-              onClick={() => { if (confirm('Clear all local reading progress?')) useAppStore.setState({ progress: {} }); }}
-            >
-              Clear Local Progress
-            </DangerBtn>
-          </div>
-        </Section>
+          <DangerBtn
+            icon={<Trash2 size={13} />}
+            onClick={() => { if (confirm('Clear all local reading progress?')) useAppStore.setState({ progress: {} }); }}
+          >
+            Clear Local Progress
+          </DangerBtn>
+        </SectionCard>
 
-        {/* Danger */}
-        <Section title="Account">
+        {/* ── Account ── */}
+        <SectionCard title="Account">
           <DangerBtn icon={<Trash2 size={13} />} onClick={clearConfig}>
             Sign Out & Reset App
           </DangerBtn>
-        </Section>
+        </SectionCard>
 
-        {/* About */}
+        {/* ── About ── */}
         <div
-          className="flex items-center gap-3 px-4 py-3"
-          style={{ border: '1px solid var(--color-border-soft)', borderRadius: '6px', background: 'var(--color-surface)' }}
+          className="flex items-center gap-3 px-5 py-4"
+          style={{ border: '1px solid var(--color-border-soft)', borderRadius: 14, background: 'var(--color-surface)' }}
         >
-          <BookOpen size={16} style={{ color: 'var(--color-accent)' }} />
+          <div
+            className="flex items-center justify-center flex-shrink-0"
+            style={{ width: 36, height: 36, background: 'linear-gradient(135deg, var(--color-accent-dim), var(--color-accent))', borderRadius: 9 }}
+          >
+            <BookOpen size={16} style={{ color: '#1a1208' }} />
+          </div>
           <div>
-            <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>FolioFin v0.1.0</p>
+            <p className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>FolioFin v0.1.0</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>Jellyfin reading companion for Linux</p>
           </div>
         </div>
+
       </div>
     </div>
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function SectionCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--color-border-soft)' }}>
-        {icon && <span style={{ color: 'var(--color-accent)' }}>{icon}</span>}
-        <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-muted)' }}>{title}</h2>
+    <section style={CARD}>
+      <div className="flex items-center gap-2.5 mb-5 pb-4" style={{ borderBottom: '1px solid var(--color-border-soft)' }}>
+        {icon && (
+          <span
+            className="flex items-center justify-center"
+            style={{ width: 28, height: 28, background: 'var(--color-accent-bg)', border: '1px solid var(--color-accent-dim)', borderRadius: 7, color: 'var(--color-accent)' }}
+          >
+            {icon}
+          </span>
+        )}
+        <h2 className="text-base font-bold" style={{ color: 'var(--color-text)' }}>{title}</h2>
       </div>
       {children}
     </section>
@@ -322,8 +345,10 @@ function Section({ title, icon, children }: { title: string; icon?: React.ReactN
 
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-semibold" style={{ color: 'var(--color-faint)', letterSpacing: '0.03em' }}>{label}</label>
+    <div className="flex flex-col gap-2">
+      <label className="text-xs font-semibold" style={{ color: 'var(--color-faint)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+        {label}
+      </label>
       {children}
     </div>
   );
@@ -333,12 +358,12 @@ function DangerBtn({ children, icon, onClick }: { children: React.ReactNode; ico
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 text-sm font-medium px-4 py-2"
+      className="flex items-center gap-2 text-sm font-semibold px-5 py-2.5"
       style={{
         color: 'var(--color-red)',
         background: 'rgba(201,95,95,0.08)',
         border: '1px solid rgba(201,95,95,0.2)',
-        borderRadius: '5px',
+        borderRadius: 22,
         cursor: 'pointer',
       }}
     >

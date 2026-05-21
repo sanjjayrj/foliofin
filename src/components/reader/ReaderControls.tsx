@@ -32,6 +32,7 @@ interface ReaderControlsProps {
   onNextPage: () => void;
   onSettingsChange: (s: Partial<ReaderSettings>) => void;
   onTocNavigate?: (href: string) => void;
+  onSearchNavigate?: (cfi: string) => void;
   onHighlight?: (cfi: string, color: string) => void;
   onClearSelection?: () => void;
   onRemoveAnnotation?: (ann: Annotation) => void;
@@ -40,16 +41,15 @@ interface ReaderControlsProps {
 
 type LeftPanel = 'none' | 'toc' | 'annotations' | 'search';
 
-const BAR_BG     = 'rgba(14, 13, 15, 0.94)';
-const BORDER     = '1px solid rgba(60, 55, 68, 0.85)';
-const RADIUS     = 14;          // bar / panel border-radius
-const INS        = 10;          // inset gap from screen edge to floating bar
-const TOP_H      = 64;          // top bar height px
-const BOT_H      = 80;          // bottom bar height px
-// Panels sit just below the top bar and just above the bottom bar
-const PANEL_TOP  = INS + TOP_H + 6;   // 80
-const PANEL_BOT  = INS + BOT_H + 6;   // 96
-const PANEL_W    = 310;
+const BAR_BG    = 'rgba(14, 13, 15, 0.94)';
+const BORDER    = '1px solid rgba(60, 55, 68, 0.85)';
+const RADIUS    = 14;
+const INS       = 10;
+const TOP_H     = 64;
+const BOT_H     = 80;
+const PANEL_TOP = INS + TOP_H + 6;   // 80
+const PANEL_BOT = INS + BOT_H + 6;   // 96
+const PANEL_W   = 310;
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '');
@@ -60,7 +60,7 @@ export default function ReaderControls({
   settings, toc = [], isOffline, annotations = [],
   selectedCfi, selectedQuote,
   onBack, onPrevPage, onNextPage,
-  onSettingsChange, onTocNavigate,
+  onSettingsChange, onTocNavigate, onSearchNavigate,
   onHighlight, onClearSelection,
   onRemoveAnnotation, onSearch,
 }: ReaderControlsProps) {
@@ -76,9 +76,14 @@ export default function ReaderControls({
   const hideControls = () => { setVisible(false); setShowSettings(false); setLeftPanel('none'); };
   const toggleLeft   = (p: LeftPanel) => setLeftPanel(cur => cur === p ? 'none' : p);
 
+  // Auto-show bars whenever text is selected so the highlight color buttons
+  // in the top bar are always accessible.
+  const hasSelection = Boolean(selectedCfi);
+  useEffect(() => {
+    if (selectedCfi) setVisible(true);
+  }, [selectedCfi]);
+
   // Focus the search input when the search panel opens.
-  // autoFocus is unreliable inside AnimatePresence because the DOM node is inserted
-  // mid-animation; a small timeout lets the node settle before we call focus().
   useEffect(() => {
     if (leftPanel === 'search') {
       const t = setTimeout(() => searchInputRef.current?.focus(), 120);
@@ -101,15 +106,10 @@ export default function ReaderControls({
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery, onSearch]);
 
-  // Whether any text is currently selected — drives several conditional renders
-  const hasSelection = Boolean(selectedCfi);
-
   return (
     <>
       {/* ── Navigation tap strips (left = prev, right = next).
-           Only rendered when the bars are hidden AND no text is selected
-           (avoids conflicting with the highlight toolbar dismiss area).
-           The center 64% of the screen has no overlay → text selection works freely. ── */}
+           Rendered only when bars are hidden and no text is selected. ── */}
       {!visible && !hasSelection && (
         <>
           <div
@@ -125,7 +125,7 @@ export default function ReaderControls({
         </>
       )}
 
-      {/* ── Floating "show controls" button ── */}
+      {/* ── Floating "show controls" button (bars hidden, no selection) ── */}
       {!visible && !hasSelection && (
         <button
           onClick={() => setVisible(true)}
@@ -145,7 +145,7 @@ export default function ReaderControls({
         </button>
       )}
 
-      {/* ── Top bar (floating, rounded) ── */}
+      {/* ── Top bar ── */}
       <AnimatePresence>
         {visible && (
           <motion.div
@@ -179,58 +179,113 @@ export default function ReaderControls({
               <ArrowLeft size={18} /><span>Library</span>
             </button>
 
-            {/* Title + author */}
-            <div className="flex-1 min-w-0 px-2 flex items-center gap-3 overflow-hidden">
-              <div className="min-w-0">
-                <p className="text-base font-semibold truncate leading-snug" style={{ color: 'var(--color-text)' }}>{title}</p>
-                {author && <p className="text-sm truncate leading-snug" style={{ color: 'var(--color-muted)' }}>{author}</p>}
+            {/* Title + author — hidden when text is selected to make room for color swatches */}
+            {!hasSelection && (
+              <div className="flex-1 min-w-0 px-2 flex items-center gap-3 overflow-hidden">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold truncate leading-snug" style={{ color: 'var(--color-text)' }}>{title}</p>
+                  {author && <p className="text-sm truncate leading-snug" style={{ color: 'var(--color-muted)' }}>{author}</p>}
+                </div>
+                {isOffline !== undefined && (
+                  <span
+                    className="flex items-center gap-1.5 font-semibold flex-shrink-0"
+                    style={{
+                      fontSize: 12,
+                      background: isOffline ? 'rgba(90,158,111,0.15)' : 'rgba(91,133,184,0.15)',
+                      border: `1px solid ${isOffline ? 'rgba(90,158,111,0.3)' : 'rgba(91,133,184,0.3)'}`,
+                      borderRadius: 5, padding: '4px 9px',
+                      color: isOffline ? 'var(--color-green)' : 'var(--color-blue)',
+                    }}
+                  >
+                    {isOffline ? <HardDrive size={11} /> : <Wifi size={11} />}
+                    {isOffline ? 'Offline' : 'Streaming'}
+                  </span>
+                )}
               </div>
-              {isOffline !== undefined && (
-                <span
-                  className="flex items-center gap-1.5 font-semibold flex-shrink-0"
-                  style={{
-                    fontSize: 12,
-                    background: isOffline ? 'rgba(90,158,111,0.15)' : 'rgba(91,133,184,0.15)',
-                    border: `1px solid ${isOffline ? 'rgba(90,158,111,0.3)' : 'rgba(91,133,184,0.3)'}`,
-                    borderRadius: 5, padding: '4px 9px',
-                    color: isOffline ? 'var(--color-green)' : 'var(--color-blue)',
-                  }}
-                >
-                  {isOffline ? <HardDrive size={11} /> : <Wifi size={11} />}
-                  {isOffline ? 'Offline' : 'Streaming'}
-                </span>
-              )}
-            </div>
+            )}
 
-            {/* Icon buttons */}
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-              {onSearch && (
-                <CtrlBtn active={leftPanel === 'search'} onClick={() => { toggleLeft('search'); setShowSettings(false); }}>
-                  <Search size={19} />
-                </CtrlBtn>
+            {/* Highlight color picker (inline in bar when text is selected) */}
+            {hasSelection && (
+              <div className="flex-1 flex items-center gap-2 px-2 overflow-hidden">
+                <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--color-faint)' }}>
+                  Highlight:
+                </span>
+                {selectedQuote && (
+                  <span
+                    className="text-sm truncate italic flex-shrink min-w-0"
+                    style={{ color: 'var(--color-muted)', maxWidth: 180 }}
+                  >
+                    "{selectedQuote.slice(0, 52)}{selectedQuote.length > 52 ? '…' : ''}"
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Right side: icon buttons OR color swatches when text is selected */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {hasSelection ? (
+                // ── Color swatches ──
+                <>
+                  {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => (
+                    <button
+                      key={key}
+                      title={`Highlight ${key}`}
+                      onClick={() => { onHighlight?.(selectedCfi!, key); onClearSelection?.(); }}
+                      className="transition-transform hover:scale-110 active:scale-95 flex-shrink-0"
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        background: hex,
+                        border: '2.5px solid rgba(255,255,255,0.35)',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                        margin: '0 2px',
+                      }}
+                    />
+                  ))}
+                  <button
+                    onClick={onClearSelection}
+                    title="Dismiss selection"
+                    style={{
+                      color: 'var(--color-faint)', flexShrink: 0,
+                      width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', background: 'none', border: 'none', borderRadius: 7, marginLeft: 2,
+                    }}
+                    onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)')}
+                    onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-faint)')}
+                  >
+                    <X size={17} />
+                  </button>
+                </>
+              ) : (
+                // ── Normal icon buttons ──
+                <>
+                  {onSearch && (
+                    <CtrlBtn active={leftPanel === 'search'} onClick={() => { toggleLeft('search'); setShowSettings(false); }}>
+                      <Search size={19} />
+                    </CtrlBtn>
+                  )}
+                  <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
+                    <Bookmark size={19} />
+                  </CtrlBtn>
+                  {toc.length > 0 && (
+                    <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
+                      <List size={19} />
+                    </CtrlBtn>
+                  )}
+                  <CtrlBtn active={showSettings} onClick={() => { setShowSettings(v => !v); setLeftPanel('none'); }}>
+                    <Type size={19} />
+                  </CtrlBtn>
+                  <CtrlBtn active={false} onClick={hideControls}>
+                    <X size={19} />
+                  </CtrlBtn>
+                </>
               )}
-              {annotations.length > 0 && (
-                <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
-                  <Bookmark size={19} />
-                </CtrlBtn>
-              )}
-              {toc.length > 0 && (
-                <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
-                  <List size={19} />
-                </CtrlBtn>
-              )}
-              <CtrlBtn active={showSettings} onClick={() => { setShowSettings(v => !v); setLeftPanel('none'); }}>
-                <Type size={19} />
-              </CtrlBtn>
-              <CtrlBtn active={false} onClick={hideControls}>
-                <X size={19} />
-              </CtrlBtn>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Bottom bar (floating, rounded) ── */}
+      {/* ── Bottom bar ── */}
       <AnimatePresence>
         {visible && (
           <motion.div
@@ -271,7 +326,6 @@ export default function ReaderControls({
             </button>
 
             <div className="flex-1 flex flex-col gap-2">
-              {/* h-1.5 = 6px, clearly visible */}
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                 <motion.div
                   className="h-full rounded-full"
@@ -311,78 +365,7 @@ export default function ReaderControls({
         )}
       </AnimatePresence>
 
-      {/* ── Highlight toolbar ──
-           Shows whenever text is selected — regardless of whether the bars are visible.
-           A full-screen translucent backdrop catches clicks outside to dismiss.       ── */}
-      <AnimatePresence>
-        {hasSelection && (
-          <>
-            {/* Backdrop — dismiss on outside click */}
-            <div className="absolute inset-0" style={{ zIndex: 40 }} onClick={onClearSelection} />
-
-            <motion.div
-              initial={{ opacity: 0, y: 48, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 48, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 36 }}
-              className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3"
-              style={{
-                bottom: INS + BOT_H + 16,
-                zIndex: 50,
-                padding: '14px 18px',
-                background: BAR_BG,
-                border: BORDER,
-                borderRadius: RADIUS,
-                backdropFilter: 'blur(14px)',
-                boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
-                maxWidth: '90vw',
-                width: 'max-content',
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              {selectedQuote && (
-                <>
-                  <span
-                    className="text-sm font-medium truncate"
-                    style={{ color: 'var(--color-muted)', maxWidth: 200 }}
-                  >
-                    "{selectedQuote.slice(0, 50)}{selectedQuote.length > 50 ? '…' : ''}"
-                  </span>
-                  <div className="w-px self-stretch flex-shrink-0" style={{ background: 'rgba(255,255,255,0.12)' }} />
-                </>
-              )}
-              <div className="flex items-center gap-3">
-                {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => (
-                  <button
-                    key={key}
-                    title={`Highlight ${key}`}
-                    onClick={() => { onHighlight?.(selectedCfi!, key); onClearSelection?.(); }}
-                    className="flex-shrink-0 rounded-full transition-transform hover:scale-110 active:scale-95"
-                    style={{
-                      width: 30, height: 30,
-                      background: hex,
-                      border: '2.5px solid rgba(255,255,255,0.3)',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                    }}
-                  />
-                ))}
-              </div>
-              <button
-                onClick={onClearSelection}
-                style={{
-                  color: 'var(--color-faint)', flexShrink: 0,
-                  padding: 6, cursor: 'pointer', background: 'none', border: 'none',
-                }}
-              >
-                <X size={17} />
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ── Settings panel (right, floating) ── */}
+      {/* ── Settings panel ── */}
       <AnimatePresence>
         {showSettings && (
           <motion.div
@@ -484,7 +467,7 @@ export default function ReaderControls({
         )}
       </AnimatePresence>
 
-      {/* ── Left panel: TOC / Search / Annotations (floating) ── */}
+      {/* ── Left panel: TOC / Search / Annotations ── */}
       <AnimatePresence>
         {leftPanel !== 'none' && (
           <motion.div
@@ -579,7 +562,7 @@ export default function ReaderControls({
                   {!isSearching && searchResults.map((r, i) => (
                     <button
                       key={i}
-                      onClick={() => { onTocNavigate?.(r.cfi); setLeftPanel('none'); }}
+                      onClick={() => { (onSearchNavigate ?? onTocNavigate)?.(r.cfi); setLeftPanel('none'); }}
                       className="w-full text-left px-5 py-4 text-sm"
                       style={{
                         color: 'var(--color-muted)', background: 'transparent',

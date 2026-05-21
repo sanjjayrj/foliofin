@@ -38,6 +38,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const prevPageRef = useRef<() => void>(() => {});
   const nextPageRef = useRef<() => void>(() => {});
   const tocNavRef   = useRef<(href: string) => void>(() => {});
+  const searchNavRef = useRef<((cfi: string) => void) | null>(null);
   const annotationControlsRef = useRef<AnnotationControls | null>(null);
   const searchFnRef = useRef<SearchFn | null>(null);
 
@@ -125,6 +126,11 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
     handleProgress(page, pct);
   }, [handleProgress]);
 
+  const handleEpubPage = useCallback((current: number, total: number) => {
+    setCurrentPage(current);
+    setTotalPages(total);
+  }, []);
+
   const handleAnnotationControls = useCallback((controls: AnnotationControls) => {
     annotationControlsRef.current = controls;
   }, []);
@@ -161,6 +167,10 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   const handleSearch = useCallback<SearchFn>(async (query: string) => {
     if (!searchFnRef.current) return [];
     return searchFnRef.current(query);
+  }, []);
+
+  const handleSearchNavigate = useCallback((cfi: string) => {
+    searchNavRef.current?.(cfi);
   }, []);
 
   if (format === 'unknown' || format === 'mobi') {
@@ -219,6 +229,8 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
           onTextSelected={handleTextSelected}
           onAnnotationControls={handleAnnotationControls}
           onSearchReady={handleSearchReady}
+          onSearchNavigate={fn => { searchNavRef.current = fn; }}
+          onEpubPage={handleEpubPage}
         />
       )}
       {format === 'pdf' && bookData && (
@@ -267,6 +279,7 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
         onClearSelection={() => { setSelectedCfi(null); setSelectedQuote(''); }}
         onRemoveAnnotation={handleRemoveAnnotation}
         onSearch={format === 'epub' ? handleSearch : undefined}
+        onSearchNavigate={format === 'epub' ? handleSearchNavigate : undefined}
       />
     </div>
   );
