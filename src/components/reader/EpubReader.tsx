@@ -179,8 +179,9 @@ export default function EpubReader({
     applyTheme(rendition);
 
     // Track which documents already have our listeners, and keep a live reference
-    // to the current section's Contents so selectionchange can call cfiFromRange.
-    const attachedDocs = new WeakSet<Document>();
+    // to the current section's Contents so mouseup can call cfiFromRange.
+    const attachedDocs    = new WeakSet<Document>();
+    const attachedWindows = new WeakSet<Window>();
     let currentContents: any = null;
     // Most-recent relocated CFI — used to push accurate progress once locations finish
     // generating in the background.
@@ -189,45 +190,50 @@ export default function EpubReader({
     // Used to suppress the epub.js 'selected' event that fires ~250 ms later,
     // so it doesn't overwrite the position captured in mouseup.
     let lastMouseUpFiredAt = 0;
+    // Position captured from mouseup — saved here so the epub.js 'selected' event
+    // (which fires ~250 ms later) can attach a location hint to the CFI it provides.
+    // This lets the mini-toolbar appear near the selection even when cfiFromRange fails.
+    let pendingPosition: { x: number; y: number } | null = null;
 
     // ── Attach all per-iframe listeners once per unique Document ──────────────
-    const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement | undefined) => {
+    const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement) => {
       if (attachedDocs.has(doc)) return;
       attachedDocs.add(doc);
 
-      // 1. Block epub.js's capture-phase click-nav so our tap strips handle navigation.
-      doc.addEventListener('click', (e: Event) => e.stopImmediatePropagation(), true);
-
-      // 2. Arrow-key mirroring — call navigate() directly from the iframe keydown
-      //    event so arrow keys flip pages even when the iframe holds focus.
-      //    Calling navigate() directly is more reliable than dispatching a synthetic
-      //    KeyboardEvent to the parent window, which can be silently dropped.
-      const mirrorArrow = (e: KeyboardEvent) => {
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-          e.preventDefault();
-          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-            navigate(() => renditionRef.current?.next(),  1);
-          } else {
-            navigate(() => renditionRef.current?.prev(), -1);
+      // Arrow-key mirroring — attached to the iframe's window (not document) so
+      // it persists across document.write() replacements. We track per-window to
+      // avoid adding it twice when about:blank → epub content replaces the document
+      // (both fire load, but the Window object is the same → two listeners would
+      // navigate 2 pages per keypress).
+      const iframeWin = iframeEl.contentWindow;
+      if (iframeWin && (iframeWin as Window) !== window && !attachedWindows.has(iframeWin)) {
+        attachedWindows.add(iframeWin);
+        iframeWin.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+              navigate(() => renditionRef.current?.next(),  1);
+            } else {
+              navigate(() => renditionRef.current?.prev(), -1);
+            }
           }
-        }
-      };
-      const iframeWin = iframeEl?.contentWindow;
-      if (iframeWin && (iframeWin as Window) !== window) {
-        iframeWin.addEventListener('keydown', mirrorArrow);
-      } else {
-        doc.addEventListener('keydown', mirrorArrow);
+        });
       }
 
-      // 3. selectionchange — kept for the side-effect of keeping the event chain
-      //    alive; actual CFI extraction happens in mouseup (step 4).
-      doc.addEventListener('selectionchange', () => { /* tracking */ });
+      // Ensure text is selectable even if the EPUB's own CSS sets user-select:none
+      try {
+        if (!doc.getElementById('_ff_sel')) {
+          const s = doc.createElement('style');
+          s.id = '_ff_sel';
+          s.textContent = '* { -webkit-user-select: text !important; user-select: text !important; }';
+          (doc.head || doc.documentElement).appendChild(s);
+        }
+      } catch { /* cross-origin guard */ }
 
-      // 4. Mouseup: primary handler for text-selection events.
-      //    On a plain click we reclaim keyboard focus so arrow keys flip pages.
-      //    On a selection we compute the bounding rect of the selected range in
-      //    parent-window coordinates and call onTextSelected with a position hint
-      //    so the floating mini-toolbar can appear near the selected text.
+      // Mouseup: primary handler for text-selection events.
+      // On a plain click we reclaim keyboard focus so arrow keys flip pages.
+      // On a selection we compute the bounding rect in parent-window coordinates
+      // and call onTextSelected so the floating mini-toolbar can appear near the text.
       doc.addEventListener('mouseup', () => {
         const sel = doc.defaultView?.getSelection?.();
         const liveSelection = !!(
@@ -238,53 +244,85 @@ export default function EpubReader({
           try {
             const range   = sel.getRangeAt(0);
             const selRect = range.getBoundingClientRect();
-            const ifrRect = iframeEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+            const ifrRect = iframeEl.getBoundingClientRect();
             const pos = {
               x: ifrRect.left + selRect.left + selRect.width / 2,
               y: ifrRect.top  + selRect.top,
             };
+            pendingPosition = pos;
             const quote = sel.toString().trim();
+
+            // Refresh currentContents from live rendition API at selection time.
+            // This is more reliable than caching from the rendered event.
+            const allContents = (renditionRef.current as any)?.getContents?.() ?? [];
+            const liveContents = allContents.find((c: any) => c?.document === doc) ?? allContents[0] ?? currentContents;
+            if (liveContents) currentContents = liveContents;
+
             const cfi: string = currentContents?.cfiFromRange?.(range) ?? '';
             if (cfi && quote.length >= 2) {
               lastMouseUpFiredAt = Date.now();
+              pendingPosition = null;
               onTextSelected?.(cfi, quote, pos);
             }
-          } catch { /* cfiFromRange failed — 'selected' event is the fallback */ }
+            // If cfiFromRange failed, pendingPosition stays set and the
+            // epub.js 'selected' event will pick it up ~250 ms later.
+          } catch {
+            // pendingPosition may already be set above — epub.js 'selected' will handle it
+          }
         } else {
-          // Plain click with no selection: reclaim focus → removes text caret from iframe.
+          pendingPosition = null;
           setTimeout(() => window.focus(), 80);
         }
       });
     };
 
-    // ── rendered: fires for every new section view ─────────────────────────────
-    rendition.on('rendered', (_section: unknown, view: any) => {
-      // Always keep currentContents up to date so the selectionchange handler
-      // can call cfiFromRange on the correct section.
-      currentContents = view?.contents ?? currentContents;
+    // ── MutationObserver: detect iframes epub.js injects into the container ───
+    // epub.js 0.3.93 passes view.section (not the View object) as the second arg
+    // to the 'rendered' event, so we cannot get the iframe from that event.
+    // Instead we watch the DOM for iframe elements being added.
+    const setupIframeListeners = (iframe: HTMLIFrameElement) => {
+      const tryAttach = () => {
+        const doc = iframe.contentDocument;
+        if (!doc || doc.readyState === 'loading') return;
+        // Update currentContents for this iframe's document
+        const allContents = (renditionRef.current as any)?.getContents?.() ?? [];
+        const c = allContents.find((c: any) => c?.document === doc) ?? allContents[0];
+        if (c) currentContents = c;
+        attachToDoc(doc, iframe);
+      };
+      iframe.addEventListener('load', tryAttach);
+      tryAttach();
+    };
 
-      const iframeEl = view?.iframe as HTMLIFrameElement | undefined;
-      const doc: Document | null =
-        (view?.contents as any)?.document ??
-        iframeEl?.contentDocument ??
-        null;
-
-      if (!doc) {
-        // Contents object may not yet be assigned immediately after rendering —
-        // retry after a short tick to let the iframe settle.
-        setTimeout(() => {
-          const retryContents = view?.contents ?? null;
-          const retryDoc: Document | null =
-            retryContents?.document ?? iframeEl?.contentDocument ?? null;
-          if (retryDoc) {
-            if (retryContents) currentContents = retryContents;
-            attachToDoc(retryDoc, iframeEl);
+    const iframeObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLIFrameElement) {
+            setupIframeListeners(node);
+          } else if (node instanceof Element) {
+            node.querySelectorAll('iframe').forEach(el => setupIframeListeners(el as HTMLIFrameElement));
           }
-        }, 80);
-        return;
+        }
       }
+    });
 
-      attachToDoc(doc, iframeEl);
+    if (containerRef.current) {
+      iframeObserver.observe(containerRef.current, { childList: true, subtree: true });
+      // Catch any iframes epub.js already injected before we started observing
+      containerRef.current.querySelectorAll('iframe').forEach(el => setupIframeListeners(el as HTMLIFrameElement));
+    }
+
+    // 'rendered' fires as (section, view) in epub.js 0.3.93's afterDisplayed path.
+    // Use view.contents directly, and call setupIframeListeners as a safety net in
+    // case the MutationObserver missed the iframe (e.g., race on first render).
+    rendition.on('rendered', (_section: unknown, view: any) => {
+      if (view?.contents) currentContents = view.contents;
+      if (view?.iframe instanceof HTMLIFrameElement) setupIframeListeners(view.iframe);
+      // Fallback via API when view isn't passed (unlikely but safe)
+      if (!view?.contents) {
+        const all = (renditionRef.current as any)?.getContents?.() ?? [];
+        if (all[0]) currentContents = all[0];
+      }
     });
 
     book.ready
@@ -349,21 +387,25 @@ export default function EpubReader({
         onProgress(location.start.cfi, pct);
         const idx: number = (locs.locationFromCfi?.(location.start.cfi) as number) ?? -1;
         if (idx >= 0) onEpubPage?.(idx + 1, locTotal);
-      } else {
-        // Locations not yet ready — percentage is 0 until generation completes.
-        // We still save the CFI so resume-reading works correctly.
-        onProgress(location.start.cfi, 0);
       }
+      // When locTotal === 0, locations are still generating — don't call onProgress
+      // at all, so we don't overwrite the persisted percentage (from last session)
+      // with a meaningless 0. The locations.generate().then() callback below will
+      // push the correct value once generation completes.
     });
 
-    // epub.js 'selected' event — fires ~250 ms after mouseup as a fallback
-    // (e.g. keyboard selection where mouseup never fires). Skip it when mouseup
-    // already handled this selection so we don't overwrite the position hint.
+    // epub.js 'selected' event — fires ~250 ms after the user releases the mouse.
+    // This is the most reliable source of the CFI for a selection. We pair it with
+    // the position we captured earlier in mouseup (pendingPosition), giving us both
+    // an accurate CFI AND screen coordinates for the floating mini-toolbar.
     rendition.on('selected', (cfiRange: string, contents: { window: Window }) => {
+      // Skip if mouseup already provided a valid CFI+position (fired < 600 ms ago).
       if (Date.now() - lastMouseUpFiredAt < 600) return;
       const quote = contents.window.getSelection()?.toString().trim() ?? '';
       if (cfiRange && quote.length > 0) {
-        onTextSelected?.(cfiRange, quote);
+        const pos = pendingPosition;
+        pendingPosition = null;  // consume — don't reuse for the next selection
+        onTextSelected?.(cfiRange, quote, pos ?? undefined);
       }
     });
 
@@ -406,6 +448,7 @@ export default function EpubReader({
 
     return () => {
       window.removeEventListener('keydown', handleKey);
+      iframeObserver.disconnect();
       cancelAnim();
       rendition.destroy();
       book.destroy();

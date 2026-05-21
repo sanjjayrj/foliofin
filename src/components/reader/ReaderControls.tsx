@@ -77,9 +77,12 @@ export default function ReaderControls({
   const hideControls = () => { setVisible(false); setShowSettings(false); setLeftPanel('none'); };
   const toggleLeft   = (p: LeftPanel) => setLeftPanel(cur => cur === p ? 'none' : p);
 
-  // Keep tap strips and show-controls button disabled while a selection is active
-  // so the user doesn't accidentally navigate while the mini-toolbar is up.
+  // Ensure bars are visible whenever the user has an active text selection so the
+  // mini-toolbar and bar controls are both accessible.
   const hasSelection = Boolean(selectedCfi);
+  useEffect(() => {
+    if (selectedCfi) setVisible(true);
+  }, [selectedCfi]);
 
   // Focus the search input when the search panel opens.
   useEffect(() => {
@@ -422,12 +425,16 @@ export default function ReaderControls({
       </div>
 
       {/* ── Floating mini highlight toolbar (appears near the selection) ── */}
-      {selectedCfi && selectedPosition && (
+      {selectedCfi && (
         <div
           className="fixed flex items-center gap-1.5 px-3 py-2"
           style={{
-            left: Math.max(100, Math.min(window.innerWidth - 100, selectedPosition.x)),
-            top: Math.max(8, selectedPosition.y - 54),
+            left: selectedPosition
+              ? Math.max(100, Math.min(window.innerWidth - 100, selectedPosition.x))
+              : Math.round(window.innerWidth * 0.62),
+            top: selectedPosition
+              ? Math.max(INS + TOP_H + 12, selectedPosition.y - 54)
+              : Math.round(window.innerHeight * 0.36),
             transform: 'translateX(-50%)',
             zIndex: 100,
             background: 'rgba(14,13,15,0.96)',
@@ -438,17 +445,19 @@ export default function ReaderControls({
             pointerEvents: 'auto',
           }}
         >
-          {/* Down-pointing caret */}
-          <div
-            className="absolute"
-            style={{
-              bottom: -7, left: '50%', transform: 'translateX(-50%)',
-              width: 0, height: 0,
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderTop: '7px solid rgba(14,13,15,0.96)',
-            }}
-          />
+          {/* Down-pointing caret — only when positioned near actual selection */}
+          {selectedPosition && (
+            <div
+              className="absolute"
+              style={{
+                bottom: -7, left: '50%', transform: 'translateX(-50%)',
+                width: 0, height: 0,
+                borderLeft: '6px solid transparent',
+                borderRight: '6px solid transparent',
+                borderTop: '7px solid rgba(14,13,15,0.96)',
+              }}
+            />
+          )}
           {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => (
             <button
               key={key}

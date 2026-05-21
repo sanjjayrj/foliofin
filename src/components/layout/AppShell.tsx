@@ -72,7 +72,7 @@ export default function AppShell() {
         />
       )}
 
-      <main className="flex-1 min-w-0 overflow-hidden">
+      <main className="flex-1 min-w-0 overflow-hidden" style={showSidebar ? { paddingLeft: 20 } : undefined}>
         <AnimatePresence mode="wait">
           {screen === 'library' && (
             <motion.div key="library" {...slide} transition={{ duration: 0.16 }} className="h-full">
