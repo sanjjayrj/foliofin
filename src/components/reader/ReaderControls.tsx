@@ -75,6 +75,7 @@ export default function ReaderControls({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isHighlightMode, setIsHighlightMode] = useState(false);
   const [lastColor,       setLastColor]       = useState('yellow');
+  const [colorFilter,     setColorFilter]     = useState<string | null>(null);
 
   const hideControls = () => { setVisible(false); setShowSettings(false); setLeftPanel('none'); };
   const toggleLeft   = (p: LeftPanel) => setLeftPanel(cur => cur === p ? 'none' : p);
@@ -115,6 +116,10 @@ export default function ReaderControls({
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery, onSearch]);
+
+  const visibleAnnotations = colorFilter
+    ? annotations.filter(a => a.color === colorFilter)
+    : annotations;
 
   return (
     <>
@@ -222,9 +227,22 @@ export default function ReaderControls({
               <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
                 <Bookmark size={19} />
               </CtrlBtn>
-              <CtrlBtn active={isHighlightMode} onClick={() => setIsHighlightMode(v => !v)}>
-                <Highlighter size={19} />
-              </CtrlBtn>
+              <div className="relative flex-shrink-0">
+                <CtrlBtn active={isHighlightMode} onClick={() => setIsHighlightMode(v => !v)}>
+                  <Highlighter size={19} />
+                </CtrlBtn>
+                {isHighlightMode && (
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      bottom: 7, right: 5,
+                      width: 9, height: 9, borderRadius: '50%',
+                      background: HIGHLIGHT_COLORS[lastColor]?.hex ?? '#FFD700',
+                      border: '1.5px solid rgba(14,13,15,0.9)',
+                    }}
+                  />
+                )}
+              </div>
               {toc.length > 0 && (
                 <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
                   <List size={19} />
@@ -341,7 +359,7 @@ export default function ReaderControls({
             }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: BORDER }}>
+            <div className="flex items-center justify-between px-5 py-5 flex-shrink-0" style={{ borderBottom: BORDER }}>
               <p className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>Reading Settings</p>
               <button
                 onClick={() => setShowSettings(false)}
@@ -350,7 +368,7 @@ export default function ReaderControls({
                 <X size={18} />
               </button>
             </div>
-            <div className="p-5 flex flex-col gap-7">
+            <div className="px-5 pt-5 pb-8 flex flex-col gap-8">
               <SettingGroup label="Theme">
                 <div className="grid grid-cols-3 gap-2.5">
                   {([
@@ -359,7 +377,7 @@ export default function ReaderControls({
                     { id: 'sepia' as ReaderTheme, label: 'Sepia', icon: <Coffee size={15} />, bg: '#f4e8c1', fg: '#3a2e1a' },
                   ]).map(t => (
                     <button key={t.id} onClick={() => onSettingsChange({ theme: t.id })}
-                      className="flex flex-col items-center gap-2 py-4"
+                      className="flex flex-col items-center gap-2 py-5"
                       style={{
                         borderRadius: 8,
                         border: settings.theme === t.id ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
@@ -388,7 +406,7 @@ export default function ReaderControls({
                     { id: 'mono'  as ReaderFont, label: 'Mono',  style: 'monospace' },
                   ]).map(f => (
                     <button key={f.id} onClick={() => onSettingsChange({ font: f.id })}
-                      className="py-3 text-sm font-medium"
+                      className="py-4 text-sm font-medium"
                       style={{
                         fontFamily: f.style, borderRadius: 8,
                         border: settings.font === f.id ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
@@ -436,8 +454,8 @@ export default function ReaderControls({
         />
       </div>
 
-      {/* ── Floating mini highlight toolbar (appears near the selection) ── */}
-      {selectedCfi && (
+      {/* ── Floating mini highlight toolbar (normal mode only — highlight mode auto-applies) ── */}
+      {selectedCfi && !isHighlightMode && (
         <div
           className="fixed flex items-center gap-1.5 px-3 py-2"
           style={{
@@ -623,43 +641,107 @@ export default function ReaderControls({
 
             {/* Annotations tab */}
             {leftPanel === 'annotations' && (
-              <div className="flex-1 overflow-y-auto">
-                {annotations.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
-                    <Bookmark size={34} style={{ color: 'var(--color-faint)' }} />
-                    <p className="text-sm text-center leading-relaxed" style={{ color: 'var(--color-faint)' }}>
-                      Select text while reading to add a highlight
-                    </p>
-                  </div>
-                ) : (
-                  <div className="py-1">
-                    {annotations.map(ann => (
-                      <div
-                        key={ann.id}
-                        className="px-5 py-4 flex items-start gap-3 cursor-pointer"
-                        style={{ borderBottom: BORDER }}
-                        onClick={() => { onTocNavigate?.(ann.cfiRange); setLeftPanel('none'); }}
-                        onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = 'var(--color-card)')}
-                        onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = 'transparent')}
-                      >
-                        <div className="flex-shrink-0 mt-1 rounded-full"
-                          style={{ width: 12, height: 12, background: HIGHLIGHT_COLORS[ann.color]?.hex ?? '#FFD700' }} />
-                        <p className="flex-1 text-sm leading-relaxed line-clamp-3" style={{ color: 'var(--color-muted)' }}>
-                          "{ann.quote}"
+              <div className="flex flex-col flex-1 overflow-hidden">
+
+                {/* Color filter chips */}
+                <div
+                  className="flex items-center gap-1.5 px-4 py-2.5 flex-shrink-0 flex-wrap"
+                  style={{ borderBottom: BORDER }}
+                >
+                  <FilterChip
+                    active={!colorFilter}
+                    label="All"
+                    count={annotations.length}
+                    onClick={() => setColorFilter(null)}
+                  />
+                  {Object.entries(HIGHLIGHT_COLORS).map(([key, { hex }]) => {
+                    const n = annotations.filter(a => a.color === key).length;
+                    return n > 0 ? (
+                      <FilterChip
+                        key={key}
+                        active={colorFilter === key}
+                        label={key.charAt(0).toUpperCase() + key.slice(1)}
+                        color={hex}
+                        count={n}
+                        onClick={() => setColorFilter(v => v === key ? null : key)}
+                      />
+                    ) : null;
+                  })}
+                </div>
+
+                {/* List */}
+                <div className="flex-1 overflow-y-auto">
+                  {annotations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
+                      <Highlighter size={32} style={{ color: 'var(--color-faint)' }} />
+                      <div className="text-center">
+                        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-muted)' }}>
+                          No highlights yet
                         </p>
-                        <button
-                          onClick={e => { e.stopPropagation(); onRemoveAnnotation?.(ann); }}
-                          style={{ color: 'var(--color-faint)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}
-                          onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-red)')}
-                          onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-faint)')}
-                          title="Remove highlight"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <p className="text-xs leading-relaxed" style={{ color: 'var(--color-faint)' }}>
+                          Turn on highlight mode (
+                          <Highlighter size={11} style={{ display: 'inline', verticalAlign: 'middle', marginBottom: 1 }} />
+                          ) then select any text, or select text and pick a colour from the toolbar.
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  ) : visibleAnnotations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 px-6">
+                      <p className="text-sm" style={{ color: 'var(--color-faint)' }}>
+                        No {colorFilter} highlights
+                      </p>
+                    </div>
+                  ) : (
+                    visibleAnnotations.map(ann => {
+                      const hc = HIGHLIGHT_COLORS[ann.color] ?? HIGHLIGHT_COLORS.yellow;
+                      return (
+                        <div
+                          key={ann.id}
+                          className="flex items-start cursor-pointer"
+                          style={{
+                            borderBottom: BORDER,
+                            borderLeft: `3px solid ${hc.hex}`,
+                            transition: 'background 0.1s',
+                          }}
+                          onClick={() => { onTocNavigate?.(ann.cfiRange); setLeftPanel('none'); }}
+                          onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = 'var(--color-card)')}
+                          onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = 'transparent')}
+                        >
+                          <div className="flex-1 min-w-0 px-4 py-3.5">
+                            <p
+                              className="text-sm leading-relaxed line-clamp-3"
+                              style={{ color: 'var(--color-text)', fontStyle: 'italic' }}
+                            >
+                              "{ann.quote}"
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs font-semibold" style={{ color: hc.hex }}>
+                                {ann.color.charAt(0).toUpperCase() + ann.color.slice(1)}
+                              </span>
+                              <span className="text-xs" style={{ color: 'var(--color-faint)' }}>·</span>
+                              <span className="text-xs" style={{ color: 'var(--color-faint)' }}>
+                                {formatRelativeTime(ann.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); onRemoveAnnotation?.(ann); }}
+                            className="flex-shrink-0 mt-3 mr-3 flex items-center justify-center"
+                            style={{
+                              width: 26, height: 26, borderRadius: 6,
+                              color: 'var(--color-faint)', background: 'none', border: 'none',
+                              cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-red)')}
+                            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--color-faint)')}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </motion.div>
@@ -710,7 +792,7 @@ function TabBtn({ children, active, onClick }: { children: React.ReactNode; acti
 
 function SettingGroup({ label, value, children }: { label: string; value?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3.5">
       <div className="flex justify-between items-center">
         <p className="text-sm font-bold uppercase tracking-wide" style={{ color: 'var(--color-muted)' }}>{label}</p>
         {value && <span className="text-sm" style={{ color: 'var(--color-faint)' }}>{value}</span>}
@@ -718,6 +800,49 @@ function SettingGroup({ label, value, children }: { label: string; value?: strin
       {children}
     </div>
   );
+}
+
+function FilterChip({
+  active, label, color, count, onClick,
+}: { active: boolean; label: string; color?: string; count?: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 text-xs font-semibold flex-shrink-0"
+      style={{
+        padding: '4px 9px',
+        borderRadius: 7,
+        border: active
+          ? `1.5px solid ${color ?? 'var(--color-accent-dim)'}`
+          : '1.5px solid var(--color-border)',
+        background: active
+          ? (color ? `${color}28` : 'var(--color-accent-bg)')
+          : 'transparent',
+        color: active
+          ? (color ?? 'var(--color-accent-soft)')
+          : 'var(--color-faint)',
+        cursor: 'pointer',
+        transition: 'all 0.12s',
+      }}
+    >
+      {color && (
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
+      )}
+      {label}
+      {count != null && count > 0 && (
+        <span style={{ opacity: 0.6 }}>{count}</span>
+      )}
+    </button>
+  );
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000)      return 'Just now';
+  if (diff < 3_600_000)   return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000)  return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function TocEntry({ item, depth, onNavigate }: { item: TocItem; depth: number; onNavigate: (h: string) => void }) {

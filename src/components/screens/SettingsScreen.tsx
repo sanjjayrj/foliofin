@@ -9,7 +9,7 @@ const CARD: React.CSSProperties = {
   background: 'var(--color-card)',
   border: '1px solid var(--color-border)',
   borderRadius: 14,
-  padding: '20px 24px',
+  padding: '24px 28px',
 };
 
 const fieldStyle: React.CSSProperties = {
@@ -116,7 +116,7 @@ export default function SettingsScreen() {
               </span>
             </div>
           )}
-          <form onSubmit={handleReconnect} className="flex flex-col gap-4">
+          <form onSubmit={handleReconnect} className="flex flex-col gap-5">
             <FieldGroup label="Server URL">
               <input type="url" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} style={fieldStyle} />
             </FieldGroup>
@@ -152,7 +152,7 @@ export default function SettingsScreen() {
 
         {/* ── Reading defaults ── */}
         <SectionCard icon={<Palette size={16} />} title="Reading Defaults">
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-6">
             <div className="grid grid-cols-2 gap-4">
               <FieldGroup label="Theme">
                 <select
@@ -327,7 +327,7 @@ export default function SettingsScreen() {
 function SectionCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section style={CARD}>
-      <div className="flex items-center gap-2.5 mb-5 pb-4" style={{ borderBottom: '1px solid var(--color-border-soft)' }}>
+      <div className="flex items-center gap-2.5 mb-6 pb-5" style={{ borderBottom: '1px solid var(--color-border-soft)' }}>
         {icon && (
           <span
             className="flex items-center justify-center"
@@ -345,7 +345,7 @@ function SectionCard({ title, icon, children }: { title: string; icon?: React.Re
 
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <label className="text-xs font-semibold" style={{ color: 'var(--color-faint)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
         {label}
       </label>

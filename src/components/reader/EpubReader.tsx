@@ -210,10 +210,33 @@ export default function EpubReader({
         }
       } catch { /* cross-origin guard */ }
 
-      // Mouseup: primary handler for text-selection events.
-      // On a plain click we reclaim keyboard focus so arrow keys flip pages.
-      // On a selection we compute the bounding rect in parent-window coordinates
-      // and call onTextSelected so the floating mini-toolbar can appear near the text.
+      // selectionchange fires continuously as the user drags to select.
+      // We capture position + quote here so the pending vars are always up-to-date
+      // by the time epub.js fires its 'selected' event 250 ms after the final change.
+      // This handles WebKit builds that commit the selection slightly after mouseup.
+      doc.addEventListener('selectionchange', () => {
+        const sel = doc.defaultView?.getSelection?.();
+        if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+          const text = sel.toString().trim();
+          if (text.length >= 2) {
+            try {
+              const range   = sel.getRangeAt(0);
+              const selRect = range.getBoundingClientRect();
+              const ifrRect = iframeEl.getBoundingClientRect();
+              if (selRect.width > 0 || selRect.height > 0) {
+                pendingPosition = {
+                  x: ifrRect.left + selRect.left + selRect.width / 2,
+                  y: ifrRect.top  + selRect.top,
+                };
+                pendingQuote = text;
+              }
+            } catch {}
+          }
+        }
+      });
+
+      // mouseup: attempt the fast CFI path immediately so the toolbar appears
+      // without waiting 250 ms for the epub.js debounce.
       doc.addEventListener('mouseup', () => {
         const sel = doc.defaultView?.getSelection?.();
         const hasSelection = !!(
@@ -248,8 +271,7 @@ export default function EpubReader({
         } else {
           pendingPosition = null;
           pendingQuote    = '';
-          // No selection — reclaim keyboard focus so arrow keys keep working
-          requestAnimationFrame(() => window.focus());
+          // Plain click — keyboard focus is reclaimed by the window-blur handler.
         }
       });
     };

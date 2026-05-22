@@ -148,7 +148,9 @@ export default function ReaderScreen({ onBack }: ReaderScreenProps) {
   }, []);
 
   const handleHighlight = useCallback((cfi: string, color: string) => {
-    annotationControlsRef.current?.add(cfi, color);
+    // Visual epub highlight is best-effort — may fail if the section isn't in the DOM.
+    // We always persist to the store regardless so the list stays accurate.
+    try { annotationControlsRef.current?.add(cfi, color); } catch { /* ignore render error */ }
     const ann: Annotation = {
       id:        Date.now().toString(36) + Math.random().toString(36).slice(2),
       bookId:    currentBook.Id,
