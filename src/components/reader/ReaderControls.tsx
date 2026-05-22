@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, Sun, Moon, Coffee, Type,
   ChevronLeft, ChevronRight, List, X, HardDrive, Wifi,
-  Bookmark, Search, Loader, Trash2, Menu,
+  Bookmark, Search, Loader, Trash2, Menu, Highlighter,
 } from 'lucide-react';
 import type { ReaderSettings, ReaderTheme, ReaderFont, Annotation } from '../../types/jellyfin';
 import { HIGHLIGHT_COLORS, type SearchFn } from './EpubReader';
@@ -73,6 +73,8 @@ export default function ReaderControls({
   const [isSearching,   setIsSearching]  = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isHighlightMode, setIsHighlightMode] = useState(false);
+  const [lastColor,       setLastColor]       = useState('yellow');
 
   const hideControls = () => { setVisible(false); setShowSettings(false); setLeftPanel('none'); };
   const toggleLeft   = (p: LeftPanel) => setLeftPanel(cur => cur === p ? 'none' : p);
@@ -91,6 +93,13 @@ export default function ReaderControls({
       return () => clearTimeout(t);
     }
   }, [leftPanel]);
+
+  // In highlight mode, immediately apply a highlight when the user makes a selection.
+  useEffect(() => {
+    if (isHighlightMode && selectedCfi) {
+      onHighlight?.(selectedCfi, lastColor);
+    }
+  }, [selectedCfi]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced search
   useEffect(() => {
@@ -212,6 +221,9 @@ export default function ReaderControls({
               )}
               <CtrlBtn active={leftPanel === 'annotations'} onClick={() => { toggleLeft('annotations'); setShowSettings(false); }}>
                 <Bookmark size={19} />
+              </CtrlBtn>
+              <CtrlBtn active={isHighlightMode} onClick={() => setIsHighlightMode(v => !v)}>
+                <Highlighter size={19} />
               </CtrlBtn>
               {toc.length > 0 && (
                 <CtrlBtn active={leftPanel === 'toc'} onClick={() => { toggleLeft('toc'); setShowSettings(false); }}>
@@ -462,7 +474,7 @@ export default function ReaderControls({
             <button
               key={key}
               title={`Highlight ${key}`}
-              onClick={() => onHighlight?.(selectedCfi!, key)}
+              onClick={() => { setLastColor(key); onHighlight?.(selectedCfi!, key); }}
               style={{
                 width: 26, height: 26, borderRadius: '50%',
                 background: hex,

@@ -180,8 +180,7 @@ export default function EpubReader({
 
     // Track which documents already have our listeners, and keep a live reference
     // to the current section's Contents so mouseup can call cfiFromRange.
-    const attachedDocs    = new WeakSet<Document>();
-    const attachedWindows = new WeakSet<Window>();
+    const attachedDocs = new WeakSet<Document>();
     let currentContents: any = null;
     // Most-recent relocated CFI — used to push accurate progress once locations finish
     // generating in the background.
@@ -194,31 +193,12 @@ export default function EpubReader({
     // (which fires ~250 ms later) can attach a location hint to the CFI it provides.
     // This lets the mini-toolbar appear near the selection even when cfiFromRange fails.
     let pendingPosition: { x: number; y: number } | null = null;
+    let pendingQuote = '';
 
     // ── Attach all per-iframe listeners once per unique Document ──────────────
     const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement) => {
       if (attachedDocs.has(doc)) return;
       attachedDocs.add(doc);
-
-      // Arrow-key mirroring — attached to the iframe's window (not document) so
-      // it persists across document.write() replacements. We track per-window to
-      // avoid adding it twice when about:blank → epub content replaces the document
-      // (both fire load, but the Window object is the same → two listeners would
-      // navigate 2 pages per keypress).
-      const iframeWin = iframeEl.contentWindow;
-      if (iframeWin && (iframeWin as Window) !== window && !attachedWindows.has(iframeWin)) {
-        attachedWindows.add(iframeWin);
-        iframeWin.addEventListener('keydown', (e: KeyboardEvent) => {
-          if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-            e.preventDefault();
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-              navigate(() => renditionRef.current?.next(),  1);
-            } else {
-              navigate(() => renditionRef.current?.prev(), -1);
-            }
-          }
-        });
-      }
 
       // Ensure text is selectable even if the EPUB's own CSS sets user-select:none
       try {
@@ -236,11 +216,11 @@ export default function EpubReader({
       // and call onTextSelected so the floating mini-toolbar can appear near the text.
       doc.addEventListener('mouseup', () => {
         const sel = doc.defaultView?.getSelection?.();
-        const liveSelection = !!(
+        const hasSelection = !!(
           sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length >= 2
         );
 
-        if (liveSelection && sel) {
+        if (hasSelection && sel) {
           try {
             const range   = sel.getRangeAt(0);
             const selRect = range.getBoundingClientRect();
@@ -250,28 +230,26 @@ export default function EpubReader({
               y: ifrRect.top  + selRect.top,
             };
             pendingPosition = pos;
-            const quote = sel.toString().trim();
+            pendingQuote    = sel.toString().trim();
 
-            // Refresh currentContents from live rendition API at selection time.
-            // This is more reliable than caching from the rendered event.
+            // Fast path: compute CFI now so the toolbar appears immediately.
+            // Falls back to the epub.js 'selected' event (~250 ms later) if this fails.
             const allContents = (renditionRef.current as any)?.getContents?.() ?? [];
             const liveContents = allContents.find((c: any) => c?.document === doc) ?? allContents[0] ?? currentContents;
             if (liveContents) currentContents = liveContents;
 
             const cfi: string = currentContents?.cfiFromRange?.(range) ?? '';
-            if (cfi && quote.length >= 2) {
+            if (cfi) {
               lastMouseUpFiredAt = Date.now();
-              pendingPosition = null;
-              onTextSelected?.(cfi, quote, pos);
+              onTextSelected?.(cfi, pendingQuote, pendingPosition);
+              // pendingPosition/Quote remain set; epub.js 'selected' skips via lastMouseUpFiredAt
             }
-            // If cfiFromRange failed, pendingPosition stays set and the
-            // epub.js 'selected' event will pick it up ~250 ms later.
-          } catch {
-            // pendingPosition may already be set above — epub.js 'selected' will handle it
-          }
+          } catch { /* fall through to epub.js 'selected' event */ }
         } else {
           pendingPosition = null;
-          setTimeout(() => window.focus(), 80);
+          pendingQuote    = '';
+          // No selection — reclaim keyboard focus so arrow keys keep working
+          requestAnimationFrame(() => window.focus());
         }
       });
     };
@@ -398,14 +376,31 @@ export default function EpubReader({
     // This is the most reliable source of the CFI for a selection. We pair it with
     // the position we captured earlier in mouseup (pendingPosition), giving us both
     // an accurate CFI AND screen coordinates for the floating mini-toolbar.
-    rendition.on('selected', (cfiRange: string, contents: { window: Window }) => {
-      // Skip if mouseup already provided a valid CFI+position (fired < 600 ms ago).
+    rendition.on('selected', (cfiRange: string, contents: any) => {
+      // Skip if mouseup already provided a CFI within the last 600 ms.
       if (Date.now() - lastMouseUpFiredAt < 600) return;
-      const quote = contents.window.getSelection()?.toString().trim() ?? '';
-      if (cfiRange && quote.length > 0) {
-        const pos = pendingPosition;
-        pendingPosition = null;  // consume — don't reuse for the next selection
-        onTextSelected?.(cfiRange, quote, pos ?? undefined);
+      // Use quote captured at mouseup time; fallback to live selection via Contents API.
+      const qt  = pendingQuote || contents?.window?.getSelection?.()?.toString().trim() || '';
+      const pos = pendingPosition;
+      pendingPosition = null;
+      pendingQuote    = '';
+      if (cfiRange && qt.length >= 2) {
+        onTextSelected?.(cfiRange, qt, pos ?? undefined);
+      }
+    });
+
+    // epub.js forwards DOM_EVENTS (including 'keydown') from every iframe's document
+    // to the rendition via its passEvents hook. This is the reliable channel for
+    // arrow-key navigation when the epub iframe has focus — it requires no MutationObserver
+    // timing tricks and fires even if the parent window has lost focus.
+    rendition.on('keydown', (e: KeyboardEvent) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault();
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          navigate(() => renditionRef.current?.next(),  1);
+        } else {
+          navigate(() => renditionRef.current?.prev(), -1);
+        }
       }
     });
 
@@ -446,8 +441,21 @@ export default function EpubReader({
     };
     window.addEventListener('keydown', handleKey);
 
+    // When the epub iframe captures keyboard focus (on click), immediately reclaim it
+    // for the parent window so arrow-key navigation keeps working at all times.
+    // requestAnimationFrame defers one frame so the iframe still receives its
+    // mousedown/mouseup events — this does NOT interfere with drag-based text selection
+    // because mouse capture is independent of keyboard focus.
+    const handleWindowBlur = () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      requestAnimationFrame(() => window.focus());
+    };
+    window.addEventListener('blur', handleWindowBlur);
+
     return () => {
       window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('blur', handleWindowBlur);
       iframeObserver.disconnect();
       cancelAnim();
       rendition.destroy();
