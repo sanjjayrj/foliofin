@@ -65,7 +65,7 @@ Install the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visua
 ### Clone and install
 
 ```bash
-git clone https://github.com/your-username/foliofin.git
+git clone https://github.com/sanjjayrj/foliofin.git
 cd foliofin
 npm install
 ```
