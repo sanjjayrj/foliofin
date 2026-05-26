@@ -182,6 +182,11 @@ export default function EpubReader({
     // to the current section's Contents so mouseup can call cfiFromRange.
     const attachedDocs = new WeakSet<Document>();
     let currentContents: any = null;
+    // Track whether the mouse button is pressed inside any epub iframe.
+    // handleWindowBlur defers window.focus() until mouseup so that drag-based
+    // text selection isn't interrupted by focus being stolen mid-drag.
+    let isMouseDown = false;
+    let shouldReclaimFocus = false;
     // Most-recent relocated CFI — used to push accurate progress once locations finish
     // generating in the background.
     let lastKnownCfi = '';
@@ -199,6 +204,18 @@ export default function EpubReader({
     const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement) => {
       if (attachedDocs.has(doc)) return;
       attachedDocs.add(doc);
+
+      // Track mouse button state so handleWindowBlur can defer focus reclaim
+      // until after mouseup — preventing window.focus() from collapsing a
+      // drag-in-progress text selection before cfiFromRange is called.
+      doc.addEventListener('mousedown', () => { isMouseDown = true; });
+      doc.addEventListener('mouseup', () => {
+        isMouseDown = false;
+        if (shouldReclaimFocus) {
+          shouldReclaimFocus = false;
+          requestAnimationFrame(() => window.focus());
+        }
+      });
 
       // Ensure text is selectable even if the EPUB's own CSS sets user-select:none
       try {
@@ -463,14 +480,18 @@ export default function EpubReader({
     };
     window.addEventListener('keydown', handleKey);
 
-    // When the epub iframe captures keyboard focus (on click), immediately reclaim it
-    // for the parent window so arrow-key navigation keeps working at all times.
-    // requestAnimationFrame defers one frame so the iframe still receives its
-    // mousedown/mouseup events — this does NOT interfere with drag-based text selection
-    // because mouse capture is independent of keyboard focus.
+    // When the epub iframe captures keyboard focus (on click), reclaim it for the
+    // parent window so arrow-key navigation keeps working at all times.
+    // If a mouse drag is in progress (isMouseDown), defer the reclaim until the
+    // mouseup handler fires — this lets the selection complete and cfiFromRange
+    // run before window.focus() collapses the iframe's selection.
     const handleWindowBlur = () => {
       const active = document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      if (isMouseDown) {
+        shouldReclaimFocus = true;
+        return;
+      }
       requestAnimationFrame(() => window.focus());
     };
     window.addEventListener('blur', handleWindowBlur);
