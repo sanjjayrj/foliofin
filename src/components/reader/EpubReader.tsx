@@ -182,11 +182,6 @@ export default function EpubReader({
     // to the current section's Contents so mouseup can call cfiFromRange.
     const attachedDocs = new WeakSet<Document>();
     let currentContents: any = null;
-    // Track whether the mouse button is pressed inside any epub iframe.
-    // handleWindowBlur defers window.focus() until mouseup so that drag-based
-    // text selection isn't interrupted by focus being stolen mid-drag.
-    let isMouseDown = false;
-    let shouldReclaimFocus = false;
     // Most-recent relocated CFI — used to push accurate progress once locations finish
     // generating in the background.
     let lastKnownCfi = '';
@@ -199,23 +194,15 @@ export default function EpubReader({
     // This lets the mini-toolbar appear near the selection even when cfiFromRange fails.
     let pendingPosition: { x: number; y: number } | null = null;
     let pendingQuote = '';
+    // True while the mouse button is held down inside an epub iframe.
+    // handleWindowBlur defers focus-reclaim until mouseup so the selection range
+    // is still live when we read it.
+    let isMouseDown = false;
 
     // ── Attach all per-iframe listeners once per unique Document ──────────────
     const attachToDoc = (doc: Document, iframeEl: HTMLIFrameElement) => {
       if (attachedDocs.has(doc)) return;
       attachedDocs.add(doc);
-
-      // Track mouse button state so handleWindowBlur can defer focus reclaim
-      // until after mouseup — preventing window.focus() from collapsing a
-      // drag-in-progress text selection before cfiFromRange is called.
-      doc.addEventListener('mousedown', () => { isMouseDown = true; });
-      doc.addEventListener('mouseup', () => {
-        isMouseDown = false;
-        if (shouldReclaimFocus) {
-          shouldReclaimFocus = false;
-          requestAnimationFrame(() => window.focus());
-        }
-      });
 
       // Ensure text is selectable even if the EPUB's own CSS sets user-select:none
       try {
@@ -226,6 +213,9 @@ export default function EpubReader({
           (doc.head || doc.documentElement).appendChild(s);
         }
       } catch { /* cross-origin guard */ }
+
+      // Track mousedown so handleWindowBlur can defer focus-reclaim until mouseup.
+      doc.addEventListener('mousedown', () => { isMouseDown = true; });
 
       // selectionchange fires continuously as the user drags to select.
       // We capture position + quote here so the pending vars are always up-to-date
@@ -252,9 +242,10 @@ export default function EpubReader({
         }
       });
 
-      // mouseup: attempt the fast CFI path immediately so the toolbar appears
-      // without waiting 250 ms for the epub.js debounce.
+      // mouseup: compute CFI synchronously while the selection is still live,
+      // then reclaim window focus so arrow-key page-turning works immediately.
       doc.addEventListener('mouseup', () => {
+        isMouseDown = false;
         const sel = doc.defaultView?.getSelection?.();
         const hasSelection = !!(
           sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length >= 2
@@ -272,12 +263,8 @@ export default function EpubReader({
             pendingPosition = pos;
             pendingQuote    = sel.toString().trim();
 
-            // Fast path: compute CFI now so the toolbar appears immediately.
-            // Falls back to the epub.js 'selected' event (~250 ms later) if this fails.
-            const allContents = (renditionRef.current as any)?.getContents?.() ?? [];
-            const liveContents = allContents.find((c: any) => c?.document === doc) ?? allContents[0] ?? currentContents;
-            if (liveContents) currentContents = liveContents;
-
+            // Compute CFI using currentContents, which is reliably set by the
+            // hooks.content hook (registered below) before any display completes.
             const cfi: string = currentContents?.cfiFromRange?.(range) ?? '';
             if (cfi) {
               lastMouseUpFiredAt = Date.now();
@@ -288,8 +275,12 @@ export default function EpubReader({
         } else {
           pendingPosition = null;
           pendingQuote    = '';
-          // Plain click — keyboard focus is reclaimed by the window-blur handler.
         }
+
+        // Always reclaim window focus after mouseup so arrow keys keep working.
+        // This fires after we've already read the selection above, so it's safe
+        // even though window.focus() will collapse the iframe's visual selection.
+        setTimeout(() => window.focus(), 50);
       });
     };
 
@@ -329,13 +320,24 @@ export default function EpubReader({
       containerRef.current.querySelectorAll('iframe').forEach(el => setupIframeListeners(el as HTMLIFrameElement));
     }
 
+    // hooks.content fires synchronously in afterDisplayed with view.contents as the
+    // first argument — guaranteed to carry a valid cfiBase (unlike the 'rendered'
+    // event, whose second arg structure varies across epub.js patch versions).
+    // Registering here (before display()) ensures it runs on every section load.
+    (rendition.hooks as any).content.register((contents: any) => {
+      currentContents = contents;
+      const doc = contents?.document;
+      if (!doc) return;
+      const allIframes = Array.from(containerRef.current?.querySelectorAll('iframe') ?? []) as HTMLIFrameElement[];
+      const iframeEl = allIframes.find(f => f.contentDocument === doc) ?? allIframes[0] ?? null;
+      if (iframeEl) attachToDoc(doc, iframeEl);
+    });
+
     // 'rendered' fires as (section, view) in epub.js 0.3.93's afterDisplayed path.
-    // Use view.contents directly, and call setupIframeListeners as a safety net in
-    // case the MutationObserver missed the iframe (e.g., race on first render).
+    // Keep as a belt-and-suspenders safety net for currentContents.
     rendition.on('rendered', (_section: unknown, view: any) => {
       if (view?.contents) currentContents = view.contents;
       if (view?.iframe instanceof HTMLIFrameElement) setupIframeListeners(view.iframe);
-      // Fallback via API when view isn't passed (unlikely but safe)
       if (!view?.contents) {
         const all = (renditionRef.current as any)?.getContents?.() ?? [];
         if (all[0]) currentContents = all[0];
@@ -480,19 +482,15 @@ export default function EpubReader({
     };
     window.addEventListener('keydown', handleKey);
 
-    // When the epub iframe captures keyboard focus (on click), reclaim it for the
-    // parent window so arrow-key navigation keeps working at all times.
-    // If a mouse drag is in progress (isMouseDown), defer the reclaim until the
-    // mouseup handler fires — this lets the selection complete and cfiFromRange
-    // run before window.focus() collapses the iframe's selection.
+    // Reclaim window focus when the epub iframe steals it (e.g., on click/tab-in).
+    // Without this, arrow keys stop working once the iframe has focus because
+    // rendition.on('keydown') is not reliably fired in Tauri/WebKitGTK.
+    // If isMouseDown is true the user is mid-drag selecting; mouseup will reclaim
+    // focus AFTER reading the selection, so we skip here.
     const handleWindowBlur = () => {
-      const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
-      if (isMouseDown) {
-        shouldReclaimFocus = true;
-        return;
+      if (!isMouseDown) {
+        requestAnimationFrame(() => window.focus());
       }
-      requestAnimationFrame(() => window.focus());
     };
     window.addEventListener('blur', handleWindowBlur);
 
